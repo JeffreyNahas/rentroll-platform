@@ -251,6 +251,36 @@ management entity have no units to lease.
 **Decision:** empty files load a snapshot with zero leases rather than failing.
 An empty result and a parse failure must not look the same.
 
+### 153c commercial rent roll leaves `unit_type` blank
+
+Every other file populates column 1 (Unit Type). 153c does not — its 7 lease
+rows have a unit number in column 0 and a resident code in column 3, but column
+1 is empty. A naive `if unit_number and unit_type` check silently drops all 7
+leases. Surfaced by `scripts/batch_parse.py`; fixed by requiring `unit_number
+and (unit_type or resident)`.
+
+### 153c source disagreement between the two reports
+
+The 153c rent roll contains 7 leases (1 occupied + 6 vacant, RENTRETL charge
+$3,476). The 153c availability report shows `Units = 0`. The two Yardi exports
+disagree at the source — this is a data-quality issue, not a parser bug.
+
+**Decision:** the loader records both figures with `occupancy_source` per
+metric. Any occupancy view for 153c must use `rent_roll_derived`.
+
+### 462a summary block is internally inconsistent
+
+`SUBSIDY` reported $30,963 in the file-level summary, but the sum of individual
+`SUBSIDY` charges across the 269 leases is $32,273. `SEC8CRD` shows the same
+delta in the opposite direction: reported −$30,963, computed −$32,273. The two
+offset exactly, so the summary's grand total still balances.
+
+Per-lease reconciliation on 462a passes for all 269 leases, so the lease-level
+data is intact — the file's own summary block is what's wrong.
+
+**Decision:** trust the per-lease sum, not the summary. Log the mismatch to
+`ingest_audit` at load time so it's visible in the data-quality panel.
+
 ---
 
 ## 6. Decisions summary
@@ -275,7 +305,12 @@ An empty result and a parse failure must not look the same.
 ## Reproducing
 
 ```bash
-python scripts/discover.py
+python scripts/discover.py     # structure-only checks
+python scripts/batch_parse.py  # full parser run with reconciliation
 ```
 
-Exits after reporting; makes no database connection and writes no data.
+Both exit after reporting; neither makes a database connection or writes data.
+`batch_parse.py` exits non-zero only on parser-level failures (crashes,
+validator warnings, or per-lease reconciliation gaps); file-level source
+inconsistencies like the 462a summary and the 153c cross-report gap are
+reported as notes and do not fail the run.

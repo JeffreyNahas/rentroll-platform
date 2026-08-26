@@ -85,11 +85,14 @@ def parse_rent_roll(path: Path) -> tuple[FileHeader, list[LeaseRecord], list[str
 
         code = text_at(df, row, CHARGE_CODE)
         unit_type = text_at(df, row, UNIT_TYPE)
+        resident = text_at(df, row, RESIDENT)
 
-        # A lease row has both a unit number and a unit type.
-        if first and unit_type:
+        # A lease row has a unit number and either a unit type or a resident.
+        # 153c is a commercial file where unit_type is blank on every row --
+        # requiring unit_type alone silently drops all 7 of its leases.
+        if first and (unit_type or resident):
             flush()
-            is_vacant = text_at(df, row, RESIDENT) == VACANT
+            is_vacant = resident == VACANT
             current = dict(
                 section=section,
                 unit_number=first,
