@@ -1,4 +1,4 @@
-.PHONY: help up down reset migrate load discover eval test lint
+.PHONY: help up down reset migrate load discover parse eval test lint
 DIR ?= data/raw
 
 help:
@@ -24,8 +24,11 @@ migrate:   ## apply pending migrations
 discover:  ## profile the source files (no db)
 	python scripts/discover.py
 
-load:      ## parse and load all excel files
-	python -m ingest load --dir $(DIR)
+parse:     ## run both parsers across all 50 files and reconcile (no db)
+	python scripts/batch_parse.py
+
+load:      ## parse and load all excel files (idempotent by file hash)
+	python -m ingest --dir $(DIR)
 
 eval:      ## run the golden question set
 	python -m evals.run
