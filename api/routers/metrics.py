@@ -15,12 +15,13 @@ from fastapi import APIRouter, HTTPException, Query
 from psycopg import Connection
 
 from api.db import readonly_conn
-from api.envelope import envelope
+from api.envelope import ApiWarning, envelope
 from api.sources import build_sources
 
 router = APIRouter()
 
 PROPERTY_TYPES = ("residential", "affordable", "commercial", "land", "other")
+LTL_TYPES_IN_SCOPE = frozenset({"residential", "affordable"})
 
 
 def _filter_clause(
@@ -85,7 +86,25 @@ def occupancy(
             ORDER BY property_code
         """, params).fetchall()
         sources = build_sources(conn, property_codes=cited)
-    return envelope(rows, sources, started)
+
+    warnings: list[ApiWarning] = []
+    fallbacks = [
+        r["property_code"] for r in rows
+        if r["occupancy_source"] == "rent_roll_derived"
+    ]
+    if fallbacks:
+        warnings.append(ApiWarning(
+            code="occupancy_source_fallback",
+            message=(
+                f"Occupancy for {len(fallbacks)} propert"
+                f"{'y' if len(fallbacks) == 1 else 'ies'} "
+                f"({', '.join(fallbacks)}) is derived from the rent roll "
+                "because the availability report's states don't reconcile. "
+                "Numerator and denominator both come from the rent roll "
+                "in these cases; see docs/data_quality.md."
+            ),
+        ))
+    return envelope(rows, sources, started, warnings)
 
 
 # ── loss to lease ────────────────────────────────────────────────────────
@@ -108,7 +127,20 @@ def loss_to_lease(
             ORDER BY property_code
         """, params).fetchall()
         sources = build_sources(conn, property_codes=cited)
-    return envelope(rows, sources, started)
+
+    warnings: list[ApiWarning] = []
+    if property_type and property_type not in LTL_TYPES_IN_SCOPE:
+        warnings.append(ApiWarning(
+            code="loss_to_lease_out_of_scope",
+            message=(
+                f"Loss-to-lease is only defined for residential and "
+                f"affordable properties. {property_type} was requested; "
+                "commercial market_rent is 0 in the source, land and "
+                "management entities have no leases. Empty result is by "
+                "design, not by data loss."
+            ),
+        ))
+    return envelope(rows, sources, started, warnings)
 
 
 # ── delinquency ──────────────────────────────────────────────────────────

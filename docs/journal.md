@@ -9,6 +9,61 @@ they were caught — silently fixing them loses the interview asset.
 
 ---
 
+## 2026-08-26 — API polish (data-quality details, warnings, section filter)
+
+Three complementary additions that make the design rules visible in
+Postman without extra UI.
+
+**Decisions**
+- **Split data-quality into `/summary` (counts) + `/failures` (details)**,
+  not a single mixed endpoint. Mixing summary rows and detail rows in one
+  `data` array would break the uniform-schema envelope. Two clean
+  endpoints, one for the tile, one for the panel.
+- **Uniform row shape across failure kinds** — `check_name`,
+  `property_code`, `subject`, `expected`, `actual`, `delta`, `note`.
+  Callers don't have to switch on kind; the `note` is human-readable so a
+  reviewer sees "462a summary of SUBSIDY reported $30,963 but leases sum
+  to $32,273" instead of `audits_charge_code_fail: 2`. `unclassified_units`
+  synthesised as if it were an audit row (`expected=0`, `actual=count`)
+  so it slots into the same shape as `ingest_audit` failures.
+- **Warnings use the field that was already there.** The envelope shipped
+  with a `warnings: []` slot from day one. Populating it retrofits
+  transparency onto existing endpoints — no route changes, no client
+  changes, just more honest responses.
+- **Migration 005: remove the `WHERE section = 'current'` from
+  v_lease_detail** rather than adding a second view or querying `lease`
+  directly in the router. Safe because every downstream view already
+  filters on `lease_status IN ('current','notice')` which excludes
+  `'future'`. `CREATE OR REPLACE VIEW` works because the column list is
+  unchanged (only the WHERE clause is gone).
+- **`?section=current|future` as a filter, not a `/pipeline` endpoint.**
+  Same row schema serves both; a whole new route for 93 rows would be
+  overbuilding.
+
+**Verified**
+- `/portfolio/data-quality/failures` → 6 rows (3 audit + 3 unclassified),
+  each with the expected `note`.
+- `/occupancy` (all) → warns about 7 fallback properties. Surprise: 3 of
+  the 7 (134land, 183c, altapm) have `total_units=0`, so they trip the
+  `AND total_units > 0` clause and fall to `rent_roll_derived` even
+  though there's nothing to occupy. Correct, honest, worth being explicit
+  about — the warning names them.
+- `/loss-to-lease?property_type=commercial` → 0 rows + explicit warning.
+- `/properties/144r/leases?section=future` → 32 future applicants, PII
+  masked, `future_applicants` warning attached. Matches the batch-parse
+  count for 144r.
+- Migration 005: `v_lease_detail` went from 4013 → 4106 rows;
+  `v_portfolio_summary_by_type` unchanged (still 3251 residential
+  units).
+
+**Follow-ups**
+- Consider whether `/occupancy` should split the warning into "genuinely
+  empty" (land, management) vs "fallback because of data anomaly" (153c
+  and the three commercial). The current single warning is honest but a
+  reviewer might read it as if 134land has a data problem.
+
+---
+
 ## 2026-08-26 — FastAPI tool backend
 
 Wrote the `api/` package: 12 endpoints (one per gold view + fat property

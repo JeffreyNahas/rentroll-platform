@@ -13,11 +13,13 @@ from fastapi import APIRouter, HTTPException, Query
 
 from api.config import settings
 from api.db import readonly_conn
-from api.envelope import envelope
+from api.envelope import ApiWarning, envelope
 from api.pii import mask_display_name
 from api.sources import build_sources
 
 router = APIRouter()
+
+LEASE_SECTIONS = ("current", "future")
 
 
 @router.get("", summary="All properties (no snapshot data)")
@@ -90,11 +92,28 @@ def property_detail(code: str) -> dict:
 @router.get("/{code}/leases", summary="Lease detail for a property")
 def property_leases(
     code: str,
+    section: str = Query(
+        "current",
+        description=(
+            "'current' = the Current/Notice/Vacant section (default). "
+            "'future' = signed-but-not-moved-in applicants; these are "
+            "excluded from occupancy on purpose."
+        ),
+    ),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    """Row-level current-section leases. Paginated (default 100). Respects
-    `MASK_PII`."""
+    """Row-level leases. Paginated (default 100). Respects `MASK_PII`.
+
+    `?section=future` returns the 93 portfolio-wide applicants — signed
+    but not moved in — that would inflate occupancy if counted. Kept as
+    a filter (not a separate endpoint) so the same row schema serves both.
+    """
+    if section not in LEASE_SECTIONS:
+        raise HTTPException(
+            400, f"unknown section {section!r}; must be one of {list(LEASE_SECTIONS)}"
+        )
+
     started = time.perf_counter()
     with readonly_conn() as conn:
         exists = conn.execute(
@@ -113,22 +132,36 @@ def property_leases(
                    move_in_date, lease_expiration, move_out_date,
                    reported_total, base_rent_actual
             FROM v_lease_detail
-            WHERE property_code = %s
+            WHERE property_code = %s AND section = %s
             ORDER BY unit_number
             LIMIT %s OFFSET %s
-        """, (code, limit, offset)).fetchall()
+        """, (code, section, limit, offset)).fetchall()
 
         for row in rows:
             mask_display_name(row, mask=settings.mask_pii)
 
         total = conn.execute(
-            "SELECT count(*) AS c FROM v_lease_detail WHERE property_code = %s",
-            (code,),
+            "SELECT count(*) AS c FROM v_lease_detail "
+            "WHERE property_code = %s AND section = %s",
+            (code, section),
         ).fetchone()["c"]
 
         sources = build_sources(conn, property_codes=[code],
                                 report_types=["rent_roll"])
 
-    env = envelope(rows, sources, started)
-    env["pagination"] = {"limit": limit, "offset": offset, "total": total}
+    warnings: list[ApiWarning] = []
+    if section == "future":
+        warnings.append(ApiWarning(
+            code="future_applicants",
+            message=(
+                "These are signed leases with no move-in yet. They are "
+                "excluded from occupancy, loss-to-lease, delinquency, and "
+                "the expiration schedule by design; counting them would "
+                "inflate occupancy by 93 units portfolio-wide."
+            ),
+        ))
+
+    env = envelope(rows, sources, started, warnings)
+    env["pagination"] = {"limit": limit, "offset": offset, "total": total,
+                         "section": section}
     return env

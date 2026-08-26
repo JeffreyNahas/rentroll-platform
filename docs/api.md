@@ -41,8 +41,15 @@ Every query endpoint returns the same shape:
   their two files; portfolio endpoints cite all 50. The paginated leases
   endpoint attaches an extra `pagination` block.
 - **`warnings`** — populated only when something notable is being conveyed.
-  The escape-hatch endpoint always includes one warning explaining why
-  `sources` is `null`.
+  Current codes:
+  - `occupancy_source_fallback` — on `/occupancy` whenever any returned
+    row uses `rent_roll_derived`. Names the affected properties.
+  - `loss_to_lease_out_of_scope` — on `/loss-to-lease` when the caller
+    filters by `commercial`, `land`, or `other`. Empty result is by
+    design, not a data gap.
+  - `future_applicants` — on `/properties/{code}/leases?section=future`.
+    Reminds callers these are excluded from every other metric.
+  - `unprovenanced` — on `/run-readonly-sql`. Sources always `null` there.
 
 ## Endpoint catalogue
 
@@ -50,10 +57,11 @@ Every query endpoint returns the same shape:
 |---|---|---|---|
 | `GET` | `/health` | — | — |
 | `GET` | `/portfolio/summary` | `v_portfolio_summary_by_type` | — |
-| `GET` | `/portfolio/data-quality` | `v_data_quality_summary` | — |
+| `GET` | `/portfolio/data-quality` | `v_data_quality_summary` | — (counts only) |
+| `GET` | `/portfolio/data-quality/failures` | `ingest_audit` + `property_availability` | Detailed rows with a human-readable `note` per problem |
 | `GET` | `/properties` | `property` | `?property_type=` |
 | `GET` | `/properties/{code}` | `v_occupancy_by_property` + `v_charge_mix_by_property` + `v_delinquency_by_property` + `v_loss_to_lease` | — |
-| `GET` | `/properties/{code}/leases` | `v_lease_detail` | `?limit= &offset=` (PII masked) |
+| `GET` | `/properties/{code}/leases` | `v_lease_detail` | `?section=current\|future &limit= &offset=` (PII masked; default `section=current`) |
 | `GET` | `/occupancy` | `v_occupancy_by_property` | `?property_type= &property_code=` |
 | `GET` | `/loss-to-lease` | `v_loss_to_lease` | `?property_type= &property_code=` |
 | `GET` | `/delinquency` | `v_delinquency_by_property` | `?property_type= &property_code=` |
@@ -63,6 +71,24 @@ Every query endpoint returns the same shape:
 
 Row shapes match the corresponding gold view columns 1:1; the source of
 truth for column meanings is `db/migrations/004_gold_views.sql`.
+
+## `/portfolio/data-quality/failures`
+
+The details behind the counts on `/portfolio/data-quality`. Uniform row
+shape across kinds — `check_name`, `property_code`, `subject`, `expected`,
+`actual`, `delta`, `note`. Reviewer opens the endpoint and sees exactly
+what is wrong with which property, no psql required.
+
+`check_name` values currently possible:
+
+| Kind | Where it comes from | Currently |
+|---|---|---|
+| `charge_code` | `ingest_audit` failures | 462a SUBSIDY / SEC8CRD |
+| `lease_v_units` | `ingest_audit` failures | 153c (rent roll has 7, availability says 0) |
+| `unclassified_units` | `property_availability.unclassified_units > 0` | 134c (3), 139c (10), 143c (4) |
+
+Design rule #6: *surface data problems, don't hide them*. This endpoint
+is that rule as a URL.
 
 ## Governance
 
