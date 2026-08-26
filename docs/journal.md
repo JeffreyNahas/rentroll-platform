@@ -9,6 +9,69 @@ they were caught — silently fixing them loses the interview asset.
 
 ---
 
+## 2026-08-26 — Gold views
+
+Wrote `db/migrations/004_gold_views.sql` — nine plain views forming the
+semantic layer above silver.
+
+**Decisions**
+- **Plain views, not materialized.** 4,106 leases / 9,177 charges is fast
+  enough. Promote individual views only if a real API call shows latency.
+- **`v_latest_snapshot` as a foundation view** rather than repeating the
+  "latest per property per report_type" logic in every downstream view.
+  One place to change when we eventually add time-travel.
+- **`v_lease_detail` filters to `section = 'current'`.** Downstream views
+  inherit the filter — future applicants are excluded from occupancy,
+  loss-to-lease, delinquency, expirations, and portfolio KPIs by default.
+  If we later need future-applicant metrics, they get a separate view.
+- **Denominator source matches numerator source in occupancy.** When we
+  fall back to `rent_roll_derived` for 153c, `rentable_units` also comes
+  from the rent roll (`rr_occupied + rr_notice + rr_vacant = 7`), not from
+  availability's `total_units - non_revenue - unclassified` which would be
+  0 and force a NULL. Mixing sources is what silently produces nonsense
+  percentages.
+- **Portfolio ratios use `SUM(rentable_units)` from
+  `v_occupancy_by_property`, not from `property_availability` directly.**
+  This preserves each property's source-consistent denominator through the
+  aggregation. Side effect: commercial `total_rentable_units` (49) exceeds
+  commercial `total_units` (42) by 7 — that's the 153c anomaly propagating
+  honestly rather than being hidden.
+- **`v_data_quality_summary` is long-form `metric_name / value` (text).**
+  The panel is going to grow; a rigid column schema would need re-migrating
+  every time we add a metric. Text values are ugly but flexible; the
+  frontend casts per row.
+- **Charge mix uses `ABS()` in the pct denominator** so concessions (stored
+  negative) don't reduce the visible gross revenue share.
+- **Explicit `GRANT SELECT … TO rri_readonly` per view**, one line each.
+  Migration 003 set default privileges, but being explicit here makes the
+  security surface auditable in one place.
+
+**Verified against known numbers**
+- 115r: 288 occupied of 300 rentable, source `availability_report`;
+  `base_rent_actual = $754,322.32` to the cent (matches
+  `docs/data_quality.md` line 191).
+- 153c: source `rent_roll_derived`, 1 occupied of 7 rentable.
+- Portfolio: 12 residential / 6 affordable / 5 commercial / 1 land / 1 other.
+- Data-quality view surfaces exactly 3 audit failures (matches the DB).
+
+**Noteworthy observation (not a bug)**
+- 115r `loss_to_lease` is **negative** (−$22,830, −3.12%): actual rent
+  exceeds Market Rent. The SQL is correct — this reflects that Yardi's
+  "Market Rent" field on this property is behaving as a floor value rather
+  than an asking rent. Left visible in the view; if a business user reads
+  it as "we're overcharging" they'll ask, which is the right conversation
+  to have.
+
+**Follow-ups**
+- If the FastAPI layer proves any view slow, promote just that one to
+  `MATERIALIZED VIEW` and add a `REFRESH MATERIALIZED VIEW` step to the
+  end of `load_directory`.
+- Once we support multiple snapshots, revisit whether `v_lease_detail`
+  should expose all snapshots or just the latest — probably worth a
+  parameterized function then.
+
+---
+
 ## 2026-08-26 — Loader
 
 Wrote `ingest/loader.py`, `ingest/cli.py`, `ingest/__main__.py`. `make load`

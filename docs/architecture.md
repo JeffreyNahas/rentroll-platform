@@ -79,3 +79,39 @@ unmapped code must be a load-time error, not a silent `other`.**
 | `lease_v_units` | one per property, cross-report | 25 (compares current-section leases vs `total_units`) |
 
 Full column definitions in `db/migrations/001_initalize_schema.sql`.
+
+---
+
+## Gold layer
+
+Nine views in `db/migrations/004_gold_views.sql`. The semantic layer the
+API, dashboard, and (eventually) agent tools sit on. Plain views, not
+materialized — 4k leases / 9k charges is fast enough. All views granted to
+the `rri_readonly` role.
+
+### Foundation
+- `v_latest_snapshot` — resolves the current snapshot per `(property, report_type)`. Every other view joins through this.
+
+### Drill-down
+- `v_lease_detail` — one row per current-section lease with joined property / unit / resident and a derived `base_rent_actual` (sum of `category = 'base_rent'` charges). Grain: 4,013 rows.
+
+### Property metrics
+- `v_occupancy_by_property` — carries `occupancy_source` (`availability_report` where `states_reconcile AND total_units > 0`, `rent_roll_derived` otherwise). Denominator source matches numerator source — mixing would produce nonsense divisions.
+- `v_loss_to_lease` — market vs effective base rent. Residential + affordable only; commercial has no `market_rent`, land/mgmt have no leases.
+- `v_delinquency_by_property` — rollup of leases with `balance > 0`. No aging buckets (source data doesn't carry them).
+- `v_charge_mix_by_property` — long form (one row per `property × category`). `pct_of_property_gross` uses `ABS()` in the denominator so concessions show as share of gross, not net.
+
+### Time-based
+- `v_expirations_by_month` — long form (`property × month`). Month-to-month leases (NULL `lease_expiration`) excluded and can be surfaced as a separate KPI.
+
+### Rollups
+- `v_portfolio_summary_by_type` — one row per `property_type`. Ratios weighted within type — never blended across types. Occupancy denominator is `SUM(rentable_units)` from `v_occupancy_by_property`, which keeps per-property source consistency.
+- `v_data_quality_summary` — long form `metric_name / value`. Powers the dashboard data-quality panel that surfaces `ingest_audit` failures and `unclassified_units`.
+
+### Design rules enforced in the views
+
+- Base rent resolves via `charge_code.category = 'base_rent'`, never a literal `WHERE charge_code = 'RENT'` (would zero five commercial properties).
+- Never blend across property types — every rollup groups by `property_type`, and cross-type portfolio ratios are not exposed.
+- Non-revenue units (`model + down + admin`) excluded from every occupancy denominator.
+- `occupancy_source` is carried through `v_occupancy_by_property` and inherited by every downstream view that uses it.
+- Snapshot-aware end-to-end: loading next month's files won't affect today's views.
