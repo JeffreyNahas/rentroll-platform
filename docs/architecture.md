@@ -115,3 +115,27 @@ the `rri_readonly` role.
 - Non-revenue units (`model + down + admin`) excluded from every occupancy denominator.
 - `occupancy_source` is carried through `v_occupancy_by_property` and inherited by every downstream view that uses it.
 - Snapshot-aware end-to-end: loading next month's files won't affect today's views.
+
+---
+
+## API layer
+
+FastAPI, sync, sitting on `psycopg_pool`. Full endpoint catalogue and
+envelope spec in `docs/api.md`. Highlights:
+
+- **Two connection pools.** `readonly_conn()` binds to `rri_readonly`
+  (SELECT only, 5s statement timeout at the role level). `privileged_conn()`
+  is reserved for writes to `query_audit`; no query endpoint touches it.
+  Separation makes it impossible to accidentally read through a role that
+  can also write.
+- **Response envelope.** `{data, sources, row_count, query_time_ms, warnings}`.
+  `sources` lists exactly the snapshots that contributed — up to 50 for
+  portfolio endpoints, typically 2 for property-scoped ones. `run_readonly_sql`
+  returns `sources: null` plus a warning explaining why.
+- **PII masking** is applied at serialization time (`api/pii.py`), not in
+  the DB. `MASK_PII=true` rewrites `display_name` to `Resident #<id>`;
+  storage stays unmasked.
+- **Escape hatch guard.** `POST /run-readonly-sql` runs a sqlglot AST
+  validation (SELECT/CTE only, no forbidden functions, single statement,
+  row-cap wrap) before executing. Every attempt — allowed or blocked —
+  writes a row to `query_audit`.

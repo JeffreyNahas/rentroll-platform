@@ -98,6 +98,7 @@ Applies to anything added from here on.
 | `TODO.md` | Planning the next task |
 | `docs/journal.md` | Understanding *why* a past decision was made, or what mistake it fixed |
 | `docs/architecture.md` | Designing new tables, views, or services |
+| `docs/api.md` | Endpoint catalogue, envelope shape, escape-hatch guard |
 | `docs/data_quality.md` | Working on parsers, investigating a reconciliation failure |
 | `docs/walkthrough.md` | Prepping for the interview |
 

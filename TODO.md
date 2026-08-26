@@ -10,15 +10,13 @@ For the interview-facing view, see `docs/walkthrough.md`.
 
 ## Next
 
-- [ ] **FastAPI tool backend.** One endpoint per gold view + a guarded
-  `run_readonly_sql` escape hatch (sqlglot AST validation, `rri_readonly`
-  role, row cap, 5s timeout, full `query_audit` logging). Every response
-  carries a `sources` block back to file and row.
+- [ ] **Presentation layer.** Next.js + TS preferred (hits the JD stack and
+  patches a stated gap); Streamlit is the time-boxed fallback. Consume the
+  FastAPI endpoints (`docs/api.md`); every rendered number carries its
+  `sources` block. Data-quality panel that surfaces `ingest_audit` failures
+  and `unclassified_units`.
 
 ## After that
-- [ ] **Presentation layer.** Next.js + TS preferred (hits the JD stack and
-  patches a stated gap); Streamlit is the time-boxed fallback. Data-quality
-  panel that surfaces `ingest_audit` failures and `unclassified_units`.
 - [ ] **Agent.** Curated read-only toolbelt, sqlglot AST guard,
   `rri_readonly` role, citations, numeric grounding check that verifies
   every figure in the response appeared in tool output.
