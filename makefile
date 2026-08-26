@@ -27,8 +27,8 @@ discover:  ## profile the source files (no db)
 parse:     ## run both parsers across all 50 files and reconcile (no db)
 	python scripts/batch_parse.py
 
-load:      ## parse and load all excel files
-	python -m ingest load --dir $(DIR)
+load:      ## parse and load all excel files (idempotent by file hash)
+	python -m ingest --dir $(DIR)
 
 eval:      ## run the golden question set
 	python -m evals.run

@@ -199,13 +199,27 @@ reconciliation below.
 
 ### Validation results
 
+Run `make parse` to reproduce. Batch-run of both parsers across all 50 files:
+
 | Check | Result |
 |---|---|
-| Current leases vs total units, portfolio | **4,006 = 4,006** (two independent reports) |
-| Per-lease totals, Canfield Park | 309/309 present, 0 mismatches |
-| Charge-code summary, Canfield Park | 10/10 codes + total, exact to the cent |
-| Occupied cross-check, Canfield Park | 288 (rent roll) = 288 (availability) |
-| Status derivation, Canfield Park | 270 current / 18 notice = availability's 270 / (4+14) |
+| Per-lease totals, portfolio | **4,106 / 4,106 exact across 25/25 files** |
+| Per-property `(current+notice+vacant) = total_units` | 24/25 exact — 153c is the sole gap |
+| Portfolio `(current+notice+vacant) = total_units` | 4,013 vs 4,006 (+7 = 153c source-report gap) |
+| Charge-code summary, applicable files | 15/16 exact — 462a summary internally inconsistent (SUBSIDY / SEC8CRD offset by $1,310) |
+| Parser warnings | 0 across all 25 files |
+
+Two file-level discoveries surfaced (both documented in `docs/data_quality.md`):
+
+- **153c rent roll leaves `unit_type` blank**, which the initial parser required for
+  lease-row detection — silently dropped all 7 leases. Fix: recognise a lease row
+  when col 0 (unit) + col 3 (resident) are populated even if col 1 is empty.
+- **153c source disagreement**: rent roll has 7 leases, availability reports 0
+  units. Two Yardi exports disagree at the source. Occupancy for 153c must use
+  `rent_roll_derived`.
+- **462a summary block** is internally inconsistent — the file's per-lease data
+  reconciles for all 269 leases, but its own summary of SUBSIDY / SEC8CRD is off
+  by $1,310 in offsetting directions. Trust the per-lease sum; log the mismatch.
 
 ---
 
@@ -277,35 +291,53 @@ must be a load-time error, not a silent `other`.**
 | `ingest/migrate.py` | Migration runner, tracks applied files in `schema_migration`. |
 | `ingest/normalize.py` | `to_money` (parenthesized negatives), `to_date` (Excel serials), `property_type`. |
 | `ingest/models.py` | Pydantic records with date-order and vacancy validators. |
-| `ingest/parsers/` | Both parsers. **Validated against 115r: 309 leases, 1,320 charges, 0 warnings, all reconciliations exact.** |
+| `ingest/parsers/` | Both parsers. **Validated across all 25 rent rolls: 4,106 / 4,106 per-lease reconciliations exact, 0 warnings.** |
+| `scripts/batch_parse.py` | Runs both parsers across all 50 files with per-lease, per-summary, and per-property reconciliation. `make parse`. Exit non-zero on parser bugs; source-file oddities logged as notes. |
+| `ingest/loader.py` + `cli.py` | `make load`. One transaction per file, SHA-256 hash idempotency, upserts on all dimensions, unmapped charge codes fail the file. Writes 4,106 `lease_total` audits, 133 `charge_code` audits, 25 `lease_v_units` audits, and every source row to `raw_row` (bronze). Re-running is a no-op. |
 
 Parsers return `(header, records, warnings)` and never raise on a single bad
 row — a malformed row becomes a warning, not a crash that loses 308 good leases.
 
 ### Not done
 
-1. **Batch parser test across all 25 rent rolls** — do this before the loader.
-   Print per-file lease counts, warnings, and per-lease mismatch counts. You
-   want to know now if a property trips a validator.
-2. **`ingest/loader.py`** — file hashing for idempotency, upserts for
-   property/unit/resident, one transaction per file, writes to `ingest_error`
-   and `ingest_audit`.
-3. **`ingest/cli.py`** — typer entrypoint behind `make load`.
-4. **Gold views** — occupancy (segmented by property type, non-revenue units
+1. **Gold views** — occupancy (segmented by property type, non-revenue units
    excluded from the denominator, `occupancy_source` carried through),
    loss-to-lease, expiration schedule, delinquency, charge mix.
-5. **FastAPI** — metrics endpoints, every response with a `sources` block.
-6. **Presentation layer** — Next.js + TS dashboard preferred (hits the JD stack
+2. **FastAPI** — metrics endpoints, every response with a `sources` block.
+3. **Presentation layer** — Next.js + TS dashboard preferred (hits the JD stack
    and patches a stated gap); Streamlit is the time-boxed fallback.
-7. **Agent** — curated read-only toolbelt, SQL AST guard, citations, numeric
+4. **Agent** — curated read-only toolbelt, SQL AST guard, citations, numeric
    grounding check.
-8. **Evals** — golden set, trajectory + numeric scoring, `evals/report.md`.
-9. **Tests** — synthetic fixtures, parser unit tests.
-10. **README** — quickstart, ERD, data quality summary, eval results.
+5. **Evals** — golden set, trajectory + numeric scoring, `evals/report.md`.
+6. **Tests** — synthetic fixtures, parser unit tests.
+7. **README** — quickstart, ERD, data quality summary, eval results.
+
+### Loaded state
+
+After `make load`, the DB holds:
+
+| Table | Rows |
+|---|---|
+| `property` | 25 |
+| `unit` | 4,013 |
+| `unit_type` | 448 |
+| `resident` | 3,923 |
+| `lease` | 4,106 |
+| `lease_charge` | 9,177 |
+| `property_availability` | 25 |
+| `source_file` / `report_snapshot` | 50 / 50 |
+| `raw_row` (bronze) | 19,525 |
+| `ingest_audit` | 4,264 (4,261 pass, 3 fail — all three fails are the
+  documented file-level source oddities: 462a SUBSIDY, 462a SEC8CRD, 153c
+  `lease_v_units`) |
+| `ingest_error` | 0 |
 
 ### Immediate next step
 
-Batch-test the parsers across all 25 rent rolls, then write `ingest/loader.py`.
+Gold views — start with `occupancy_by_property` (segmented by property type,
+`occupancy_source` per row: `availability_report` where `states_reconcile`,
+`rent_roll_derived` where it doesn't). Then loss-to-lease, expiration
+schedule, delinquency, charge mix.
 
 ---
 
