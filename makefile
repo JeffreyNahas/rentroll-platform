@@ -1,5 +1,6 @@
-.PHONY: help up down reset migrate load discover parse eval test lint
+.PHONY: help up down reset migrate load discover parse api eval test lint
 DIR ?= data/raw
+PORT ?= 8000
 
 help:
 	@grep -E '^[a-z-]+:.*##' Makefile | sed 's/:.*##/\t/'
@@ -26,6 +27,9 @@ discover:  ## profile the source files (no db)
 
 parse:     ## run both parsers across all 50 files and reconcile (no db)
 	python scripts/batch_parse.py
+
+api:       ## run the fastapi dev server (PORT=8000 by default)
+	uvicorn api.app:app --reload --port $(PORT)
 
 load:      ## parse and load all excel files (idempotent by file hash)
 	python -m ingest --dir $(DIR)

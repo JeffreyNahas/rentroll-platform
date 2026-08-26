@@ -24,6 +24,7 @@ For a log of past decisions and mistakes, see `docs/journal.md`.
 | `scripts/batch_parse.py` | Parser + reconciliation batch test. `make parse` |
 | `ingest/loader.py` + `cli.py` | `make load`. Idempotent by file hash |
 | `db/migrations/004_gold_views.sql` | 9 gold views: `v_latest_snapshot`, `v_lease_detail`, `v_occupancy_by_property` (with `occupancy_source`), `v_loss_to_lease`, `v_delinquency_by_property`, `v_charge_mix_by_property`, `v_expirations_by_month`, `v_portfolio_summary_by_type`, `v_data_quality_summary`. All granted to `rri_readonly` |
+| `api/` | FastAPI tool backend. `make api` on `:8000`. 12 endpoints — one per gold view + `/properties/{code}/leases` (paginated, PII-masked) + guarded `POST /run-readonly-sql`. Two connection pools, response envelope with `sources`, sqlglot AST guard, `query_audit` logging. Full spec in `docs/api.md`. |
 
 ## Loaded database state
 
@@ -61,10 +62,27 @@ The 3 audit failures are the known file-level source oddities documented in
   market. Yardi's Market Rent field appears to behave as a floor here, not
   an asking rent. Real business signal, not a bug.
 
+## Verified against the API
+
+- `GET /health` → `PostgreSQL 16.15`, 50 snapshots loaded, `mask_pii=true`.
+- `GET /portfolio/summary` → 5 rows, matches gold view (12 res @ 92.13%, 6
+  aff @ 93.68%, 5 comm @ 53.06%). Cites 50 sources.
+- `GET /occupancy?property_code=115r` → `occupancy_source=availability_report`,
+  270 occupied of 300 rentable. Cites 2 sources (115r rent roll + availability).
+- `GET /properties/115r/leases?limit=3` → 300 total, PII correctly masked
+  (`Resident #1`, `Resident #2`).
+- `GET /portfolio/data-quality` → the 3 known audit failures visible.
+- `POST /run-readonly-sql` — all guard paths exercised:
+  valid SELECT → executed; `INSERT` → blocked ("only SELECT allowed");
+  `pg_read_file('/etc/passwd')` → blocked ("forbidden function");
+  `SELECT 1; DROP TABLE property;` → blocked ("multiple statements");
+  `WITH … SELECT` → executed. All 5 attempts written to `query_audit`.
+
 ## Immediate next step
 
-**FastAPI tool backend.** One endpoint per gold view (`/portfolio/summary`,
-`/occupancy`, `/loss-to-lease`, `/expirations`, `/delinquency`, `/charge-mix`,
-`/lease-detail`, `/data-quality`), plus a guarded `run_readonly_sql` escape
-hatch (sqlglot AST validation, `rri_readonly` role, row cap, 5s timeout,
-full query audit log). Every response carries a `sources` block.
+**Presentation layer.** Next.js + TS dashboard preferred (hits the JD
+stack, patches a stated gap); Streamlit is the time-boxed fallback. Tiles
+from `/portfolio/summary`, a property picker driving
+`/properties/{code}` + `/properties/{code}/leases`, expirations chart from
+`/expirations`, and a data-quality panel from `/portfolio/data-quality`
+that surfaces the 3 known audit failures.

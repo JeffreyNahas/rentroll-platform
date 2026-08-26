@@ -9,6 +9,100 @@ they were caught — silently fixing them loses the interview asset.
 
 ---
 
+## 2026-08-26 — FastAPI tool backend
+
+Wrote the `api/` package: 12 endpoints (one per gold view + fat property
+detail + paginated lease detail + guarded SQL escape hatch), all reading
+through `rri_readonly`. `make api` runs it on `:8000` with `--reload`.
+Full endpoint catalogue is in the new `docs/api.md`.
+
+**Decisions**
+- **Sync FastAPI, `psycopg_pool.ConnectionPool` (min 1, max 5).** Async
+  psycopg is real, but the take-home concurrency ceiling is one dashboard
+  + one demo user. Sync `def` handlers run in FastAPI's threadpool; the
+  pool prevents per-request connect overhead. Reassess if latency shows up.
+- **Two pools, split by role.** `readonly_conn()` → `rri_readonly`;
+  `privileged_conn()` → `postgres`, used only to write `query_audit`. The
+  physical separation makes it impossible for a query endpoint to
+  accidentally read through a role that can also write.
+- **`dict_row` factory everywhere.** FastAPI's default JSON encoder
+  handles date / datetime / Decimal, so returning `list[dict]` from
+  `conn.execute(...).fetchall()` skips a whole layer of Pydantic row
+  models. Cost: `/docs` shows generic `object` for row shapes. Worth it.
+- **Envelope as plain dict + dataclasses**, not `pydantic.BaseModel`
+  generics. Pydantic generics play badly with FastAPI's OpenAPI generation
+  in some versions, and the shape is stable enough that the dataclass +
+  dict combination is fine.
+- **Sources semantics.** Property-scoped endpoints cite exactly the files
+  for those properties. Portfolio endpoints cite all 50. Considered a
+  "sources summary" mode for portfolio to reduce envelope size (~6 KB),
+  rejected: the honest answer to "where did this number come from" is a
+  list of every contributing file.
+- **`run_readonly_sql` guard: sqlglot AST walk.** Six checks in order —
+  parse, single statement, root type, forbidden AST nodes (Insert/Update/…),
+  forbidden function names (`pg_read_file`, `dblink`, `lo_import`, etc.),
+  row-cap wrap. Row cap defaulted to **1,000** (from the plan discussion);
+  revisit once evals show whether the agent trips it.
+- **`query_audit` writes go through `privileged_conn()` in their own
+  transaction** — a slow user query holding a connection doesn't delay
+  the audit row, and rollback of the user query doesn't roll back the
+  audit.
+- **PII masking at serialization time**, one helper in `api/pii.py`,
+  called only by `/properties/{code}/leases`. Kept `MASK_PII=true` as the
+  default per the walkthrough discipline — demo with it on.
+- **CORS opened for `localhost:3000` (Next.js) and `localhost:8501`
+  (Streamlit)** so either presentation option works without config
+  changes.
+
+**Requirements drift discovered and half-fixed**
+- `requirements.txt` listed `psycopg2-binary` but the actual code has
+  been on `psycopg` 3 the whole time (`ingest/migrate.py`, the loader).
+  Added `psycopg==3.3.4` and `psycopg-pool==3.3.1` explicitly. Left
+  `psycopg2-binary` in place — nothing uses it but removing it is a
+  separate decision.
+
+**Mistakes caught**
+- **Pydantic generics on the response model** — tried `ApiResponse[T]`
+  first; FastAPI 0.141 + Pydantic 2.13 flagged the generic type as
+  ambiguous when serializing to OpenAPI. Backed off to a dict envelope
+  built by a helper. Same shape, cleaner types, one fewer moving part.
+- **`sqlglot.exp.Command` catch** — my first cut of the guard didn't
+  reject `CALL` / `DO` / arbitrary command nodes; sqlglot parses those
+  into an `exp.Command` node. Added it to the reject list before smoke
+  testing.
+- **Decimals serialized as strings.** Pydantic v2 / FastAPI's default
+  encoder emits `"6755.63"` (string) for a `NUMERIC` column, not
+  `6755.63`. Every money and percentage field was string-typed on the
+  wire. Caught the first time I tried to do arithmetic on a response
+  (`sorted(..., key=lambda r: -r['total_balance_owed'])` → `TypeError:
+  bad operand type for unary -: 'str'`). Fixed with a `_decimals_to_floats`
+  walk in `envelope()` — strings out, numbers in. Currency here caps at
+  12,2 which is well inside float64 precision. Precision-safe alternative
+  would be a Numeric.js wrapper on the frontend; not worth the
+  ergonomics tax.
+
+**Verified**
+- All five smoke queries against `/run-readonly-sql` produced the
+  expected outcome and the expected `query_audit` row (allowed/blocked
+  with the exact reason string).
+- `/portfolio/summary` numbers reconcile to `v_portfolio_summary_by_type`
+  exactly.
+- `/occupancy?property_code=115r` shows `occupancy_source =
+  availability_report`, 270 occupied of 300 rentable, sources narrowed to
+  the two 115r files.
+- `/properties/115r/leases?limit=3` returns `Resident #1`, `Resident #2`
+  — PII masking works.
+- `/portfolio/data-quality` surfaces the 3 known audit failures.
+
+**Follow-ups**
+- Move `psycopg2-binary` out of requirements.txt when we do a general
+  dependency review — currently unused.
+- Consider adding a `/properties/{code}/expirations` alias for
+  convenience once the dashboard is real (it can already query
+  `/expirations?property_code=…`).
+
+---
+
 ## 2026-08-26 — Gold views
 
 Wrote `db/migrations/004_gold_views.sql` — nine plain views forming the
