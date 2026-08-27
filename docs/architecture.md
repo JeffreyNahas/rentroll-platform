@@ -19,7 +19,7 @@ Excel files
 Postgres    bronze (raw_row) -> silver (typed entities) -> gold (views)
     |
     v  api/                       FastAPI, every response carries citations
-    v  web/  or  agent/           dashboard and/or governed tool-calling agent
+    v  web/  and  agent/           dashboard and tool-calling agent
     v  evals/                     golden set, trajectory + numeric scoring
 ```
 
@@ -132,9 +132,9 @@ envelope spec in `docs/api.md`. Highlights:
   `sources` lists exactly the snapshots that contributed — up to 50 for
   portfolio endpoints, typically 2 for property-scoped ones. `run_readonly_sql`
   returns `sources: null` plus a warning explaining why.
-- **PII masking** is applied at serialization time (`api/pii.py`), not in
-  the DB. `MASK_PII=true` rewrites `display_name` to `Resident #<id>`;
-  storage stays unmasked.
+- **PII masking** is applied at serialization time (`mask_display_name`
+  in `api/envelope.py`), not in the DB. `MASK_PII=true` rewrites
+  `display_name` to `Resident #<id>`; storage stays unmasked.
 - **Escape hatch guard.** `POST /run-readonly-sql` runs a sqlglot AST
   validation (SELECT/CTE only, no forbidden functions, single statement,
   row-cap wrap) before executing. Every attempt — allowed or blocked —

@@ -98,11 +98,12 @@ is that rule as a URL.
   endpoint touches it.
 - **PII masking.** `MASK_PII=true` (default) rewrites `display_name` to
   `Resident #<resident_id>` at serialization time. Applied by
-  `api/pii.py`, called in `/properties/{code}/leases`. Storage stays
-  unmasked; masking is a boundary concern.
+  `mask_display_name` in `api/envelope.py`, called in
+  `/properties/{code}/leases`. Storage stays unmasked; masking is a
+  boundary concern.
 - **CORS.** Allowed for `http://localhost:3000` (Next.js) and
   `http://localhost:8501` (Streamlit) by default. Adjust
-  `Settings.cors_origins` in `api/config.py`.
+  `Settings.cors_origins` in `api/db.py`.
 
 ## The escape hatch: `POST /run-readonly-sql`
 
@@ -148,7 +149,6 @@ so the audit trail is the source of truth for what was asked.
 ```bash
 make api                              # dev server on :8000, --reload
 uvicorn api.app:app --port 8000       # equivalent
-python -m api                         # equivalent (uses uvicorn under the hood)
 ```
 
 Health check:

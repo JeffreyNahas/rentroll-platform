@@ -5,6 +5,9 @@ That's the point of an audit trail -- rejections are the interesting rows.
 
 Provenance: arbitrary SQL can touch anything, so `sources` is `null` and a
 warning entry is attached to the response envelope.
+
+AST checks live in `api/sql_guard.py` so they can be unit-tested without
+spinning up FastAPI.
 """
 
 from __future__ import annotations
@@ -15,8 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from api import sql_guard
-from api.config import settings
-from api.db import privileged_conn, readonly_conn
+from api.db import privileged_conn, readonly_conn, settings
 from api.envelope import ApiWarning, envelope
 
 router = APIRouter()

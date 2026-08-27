@@ -24,7 +24,7 @@ For a log of past decisions and mistakes, see `docs/journal.md`.
 | `scripts/batch_parse.py` | Parser + reconciliation batch test. `make parse` |
 | `ingest/loader.py` + `cli.py` | `make load`. Idempotent by file hash |
 | `db/migrations/004_gold_views.sql` | 9 gold views: `v_latest_snapshot`, `v_lease_detail`, `v_occupancy_by_property` (with `occupancy_source`), `v_loss_to_lease`, `v_delinquency_by_property`, `v_charge_mix_by_property`, `v_expirations_by_month`, `v_portfolio_summary_by_type`, `v_data_quality_summary`. All granted to `rri_readonly` |
-| `api/` | FastAPI tool backend. `make api` on `:8000`. 13 endpoints — one per gold view + `/portfolio/data-quality/failures` (detailed rows with a `note`) + `/properties/{code}/leases?section=` (paginated, PII-masked) + guarded `POST /run-readonly-sql`. Two connection pools, response envelope with `sources` + `warnings`, sqlglot AST guard, `query_audit` logging. Full spec in `docs/api.md`. |
+| `api/` | FastAPI tool backend (`app`, `db`, `envelope`, `routes`, `sql`, `sql_guard`). `make api` on `:8000`. 13 endpoints — one per gold view + `/portfolio/data-quality/failures` (detailed rows with a `note`) + `/properties/{code}/leases?section=` (paginated, PII-masked) + guarded `POST /run-readonly-sql`. Two connection pools, response envelope with `sources` + `warnings`, sqlglot AST guard, `query_audit` logging. Full spec in `docs/api.md`. |
 | `db/migrations/005_lease_detail_include_future.sql` | `v_lease_detail` no longer filters on `section` — future applicants now reachable through `/properties/{code}/leases?section=future`. Downstream views unaffected (they filter on `lease_status`). |
 
 ## Loaded database state

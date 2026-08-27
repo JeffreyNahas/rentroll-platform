@@ -9,6 +9,18 @@ they were caught — silently fixing them loses the interview asset.
 
 ---
 
+## 2026-08-27 — Flatten `api/` for the walkthrough
+
+Fourteen files was textbook FastAPI layout, not extra capability. Collapsed
+to seven modules so a reviewer can follow one request without bouncing:
+`app`, `db` (settings + pools), `envelope` (citations + PII), `routes`
+(typed GETs), `sql` (hatch), `sql_guard` (AST, no FastAPI). URLs and
+response shapes unchanged. Dropped `python -m api` / `__main__.py` —
+`make api` was already the entrypoint. `sql_guard.py` stays its own file
+so the governance check is unit-testable without a server.
+
+---
+
 ## 2026-08-26 — API polish (data-quality details, warnings, section filter)
 
 Three complementary additions that make the design rules visible in
