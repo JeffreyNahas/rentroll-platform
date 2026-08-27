@@ -1,0 +1,205 @@
+{
+  "generated_at": "2026-08-28 00:01:01",
+  "agent_model": "claude-haiku-4-5",
+  "judge_model": "claude-haiku-4-5",
+  "summary": {
+    "trajectory_passed": 11,
+    "semantic_passed": 13,
+    "total": 13
+  },
+  "results": [
+    {
+      "id": "occupancy_single_property",
+      "question": "What is the occupancy for property 115r?",
+      "expected_tools": [
+        "occupancy"
+      ],
+      "actual_tools": [
+        "occupancy"
+      ],
+      "trajectory_pass": true,
+      "answer": "Occupancy for property 115r (Canfield Park) is **90%** (115r, availability report, as of 2026-02-25), with 270 occupied units out of 300 total units. An additional 18 units have notice to vacate.",
+      "expected_facts": "90% occupied (270 of 300 rentable units), sourced from the availability report (occupancy_source = availability_report).",
+      "semantic_pass": true,
+      "semantic_reason": "The actual answer correctly states 90% occupancy with 270 of 300 units occupied, properly cites the availability report as the source, and provides additional contextual details about units with notice to vacate."
+    },
+    {
+      "id": "portfolio_by_type",
+      "question": "Give me the portfolio occupancy breakdown by property type.",
+      "expected_tools": [
+        "portfolio_summary"
+      ],
+      "actual_tools": [
+        "portfolio_summary"
+      ],
+      "trajectory_pass": true,
+      "answer": "Here is the portfolio occupancy breakdown by property type (as of 2026-02-25, rent roll + availability report):\n\n| Property Type | Occupancy | Occupied Units | Total Rentable Units | # Properties |\n|---|---|---|---|---|\n| **Residential** | 92.13% | 2,984 | 3,239 | 12 |\n| **Affordable** | 93.68% | 667 | 712 | 6 |\n| **Commercial** | 53.06% | 26 | 49 | 5 |\n| **Land** | \u2014 | \u2014 | \u2014 | 1 |\n| **Other** | \u2014 | \u2014 | \u2014 | 1 |\n\n**Residential** leads with 92.13% occupancy, followed by **Affordable** at 93.68%. **Commercial** is significantly lower at 53.06%, though it includes 17 unclassified units that affect the denominator. Land and Other properties are non-revenue and report no units.",
+      "expected_facts": "Reports each type separately, never one blended figure: residential 12 properties at 92.13%, affordable 6 at 93.68%, commercial 5 at 53.06%; land and other have no meaningful occupancy percentage (no leases / non-revenue).",
+      "semantic_pass": true,
+      "semantic_reason": "The actual answer correctly reports each property type separately with the exact figures from the reference (residential 12 at 92.13%, affordable 6 at 93.68%, commercial 5 at 53.06%), appropriately handles land and other as non-revenue with no occupancy percentages, and avoids any blended metrics."
+    },
+    {
+      "id": "units_total",
+      "question": "How many units are in the portfolio in total?",
+      "expected_tools": [
+        "portfolio_totals"
+      ],
+      "actual_tools": [
+        "portfolio_totals"
+      ],
+      "trajectory_pass": true,
+      "answer": "The portfolio contains **4,006 total units** across 25 properties (as of 2026-02-25, rent roll + availability report).\n\nHowever, note: **total_rentable_units is 4,000** \u2014 this is the more trustworthy figure after excluding 13 non-revenue units and 17 unclassified units. The difference between the raw unit count and rentable units reflects reconciliation gaps where the availability report and rent roll counts differ per property.",
+      "expected_facts": "States the reconciled total_rentable_units (4,000), not the raw availability-report sum (4,006), and explains the two differ because of per-property source reconciliation (e.g. 153c's availability report undercounts against its rent roll) -- doesn't just report one number with no caveat.",
+      "semantic_pass": true,
+      "semantic_reason": "The actual answer correctly states the reconciled total_rentable_units as 4,000, distinguishes it from the raw availability-report sum of 4,006, and explains the discrepancy results from per-property source reconciliation differences between availability reports and rent rolls."
+    },
+    {
+      "id": "blended_occupancy_declined",
+      "question": "What is the single blended occupancy percentage across the entire portfolio, averaging every property type together?",
+      "expected_tools": [
+        "portfolio_summary"
+      ],
+      "actual_tools": [
+        "portfolio_summary"
+      ],
+      "trajectory_pass": true,
+      "answer": "I cannot provide a single blended occupancy percentage across the entire portfolio by averaging property types together, because **blending occupancy percentages across property types is not a valid metric.**\n\nHere are the actual occupancy figures by property type (rent roll and availability report, as of 2026-02-25):\n\n- **Residential** (12 properties): 92.13% occupied (rent_roll/unit_availability)\n- **Affordable** (6 properties): 93.68% occupied (rent_roll/unit_availability)\n- **Commercial** (5 properties): 53.06% occupied (rent_roll/unit_availability)\n- **Land** (1 property): not applicable (0 rentable units)\n- **Other** (1 property): not applicable (0 rentable units)\n\nThe denominators differ fundamentally across types\u2014residential and affordable measure occupancy against thousands of individual units, while commercial measures a handful of tenant spaces. Averaging these percentages would produce a meaningless number. Report occupancy segmented by property type instead.",
+      "expected_facts": "Declines to give one blended percentage across property types -- explains that averaging incommensurable types (e.g. a 775-unit complex with a 3-unit retail strip) isn't meaningful, and reports figures by type instead.",
+      "semantic_pass": true,
+      "semantic_reason": "The agent correctly refused to provide a blended occupancy percentage, explaining that averaging incommensurable property types is not meaningful, and instead reported actual occupancy figures segmented by property type with clear denominators and reasoning."
+    },
+    {
+      "id": "loss_to_lease_out_of_scope",
+      "question": "What is the loss to lease for property 153c?",
+      "expected_tools": [
+        "loss_to_lease"
+      ],
+      "actual_tools": [
+        "list_properties",
+        "loss_to_lease"
+      ],
+      "trajectory_pass": false,
+      "answer": "Loss to lease is only defined for residential and affordable properties. Property 153c is a commercial property (\"Abbot Mill\"), so loss to lease is out of scope by design for this property type, not a missing data point.",
+      "expected_facts": "153c is commercial; loss-to-lease is out of scope for commercial properties by design (no market_rent baseline in the source), not a missing or uncomputed number.",
+      "semantic_pass": true,
+      "semantic_reason": "The actual answer correctly identifies property 153c as commercial (\"Abbot Mill\"), explains that loss-to-lease is out of scope by design for commercial properties, and frames this as a scope limitation rather than a missing data point\u2014all matching the reference facts."
+    },
+    {
+      "id": "data_quality_failures",
+      "question": "What data quality issues exist in the portfolio right now?",
+      "expected_tools": [
+        "data_quality_failures"
+      ],
+      "actual_tools": [
+        "data_quality_failures",
+        "data_quality_summary"
+      ],
+      "trajectory_pass": false,
+      "answer": "The portfolio has a small set of data-quality issues, none affecting lease totals:\n\n**Audit Summary:**\n- **Lease totals:** 4,106 leases, 0 failures \u2014 clean.\n- **Charge codes:** 131 pass, **2 failures** (both at property 462a).\n- **Lease vs. units reconciliation:** 24 pass, **1 failure** (at property 153c).\n- **Unclassified units:** 17 total across 3 commercial properties (134c, 139c, 143c).\n\n**Specific Issues:**\n\n1. **153c (Abbot Mill, commercial):** Rent roll shows 7 current leases, but availability report shows 0 total units. Occupancy for 153c uses rent_roll_derived as authoritative.\n\n2. **462a (Stony Run, affordable) \u2014 Charge code mismatch:**  \n   - SEC8CRD: file summary reports $-30,963.00, but per-lease charges sum to $-32,273.00 (delta $-1,310.00).\n   - SUBSIDY: file summary reports $30,963.00, but per-lease charges sum to $32,273.00 (delta $1,310.00).  \n   Trust the per-lease sums; the file's summary block is internally inconsistent.\n\n3. **Unclassified units (commercial only):**  \n   - 134c: 3 units  \n   - 139c: 10 units  \n   - 143c: 4 units  \n   These arise from a commercial/residential vocabulary gap in the availability report; states never redistributed or hidden.\n\nAll data as of 2026-02-25.",
+      "expected_facts": "6 issues: a cross-report disagreement on 153c (rent roll vs. availability report unit counts), a charge-summary inconsistency on 462a covering both SUBSIDY and SEC8CRD, and unclassified units on 134c (3), 139c (10), and 143c (4).",
+      "semantic_pass": true,
+      "semantic_reason": "The actual answer identifies and correctly describes all 6 issues specified in the reference: the 153c cross-report disagreement (rent roll vs. availability), the 462a charge-summary inconsistency on both SUBSIDY and SEC8CRD with accurate delta figures, and the unclassified units on 134c (3), 139c (10), and 143c (4), with appropriate contextualization and data integrity framing."
+    },
+    {
+      "id": "pii_masking_leases",
+      "question": "List the current leases for property 115r and give me the residents' names.",
+      "expected_tools": [
+        "property_leases"
+      ],
+      "actual_tools": [
+        "property_leases"
+      ],
+      "trajectory_pass": true,
+      "answer": "I can see the current leases for property 115r, but I need to note that **resident names are already masked** in the system. The data shows resident identifiers like \"Resident #1,\" \"Resident #2,\" etc., rather than actual names. This is by design for privacy protection.\n\nThe result shows 100 leases (with 300 total in the section). Here are the masked resident identifiers for the occupied units:\n\n**Occupied Units (Sample of first 50 shown):**\n- Resident #1 through Resident #94 are the masked identifiers for residents\n\n**Notable lease statuses:**\n- Most residents have \"current\" lease status\n- Several have \"notice\" status (moving out soon):\n  - Resident #2 (Unit A107) \u2014 moving 2026-03-14\n  - Resident #13 (Unit A136) \u2014 moving 2026-02-28\n  - Resident #34 (Unit A223) \u2014 moving 2026-03-18\n  - Resident #47 (Unit A236) \u2014 moving 2026-03-31\n  - Resident #71 (Unit A318) \u2014 moving 2026-04-02\n  - Resident #94 (Unit A341) \u2014 moving 2026-04-11\n\n**Vacant Units include:** A105, A123, A125, A126, A141, A306\n\nThe resident identifiers follow the format \"Resident #<id>\" and the system does not store or return actual names. If you need additional details about specific residents (rent amounts, lease dates, etc.), I can pull that information using the masked identifier.",
+      "expected_facts": "Never provides a real resident name -- residents appear only as 'Resident #N'. May note that names are masked by the system rather than simply omitting the request.",
+      "semantic_pass": true,
+      "semantic_reason": "The answer correctly adheres to the reference requirement by using masked resident identifiers (Resident #N format) exclusively, explicitly noting that names are masked by the system for privacy, and providing lease details using only the masked identifiers without revealing actual resident names."
+    },
+    {
+      "id": "future_applicants",
+      "question": "How many future applicants are there for property 144r?",
+      "expected_tools": [
+        "property_leases"
+      ],
+      "actual_tools": [
+        "property_leases"
+      ],
+      "trajectory_pass": true,
+      "answer": "There are 32 future applicants for property 144r (144r, rent roll, as of 2026-02-25). These are signed leases with move-in dates in the future (ranging from late February through May 2026), excluded from occupancy and other metrics by design.",
+      "expected_facts": "32 future applicants -- signed leases with no move-in yet, excluded from occupancy and other metrics by design.",
+      "semantic_pass": true,
+      "semantic_reason": "The actual answer correctly states 32 future applicants for property 144r and accurately characterizes them as signed leases with future move-in dates (excluded from occupancy metrics by design), matching all key facts in the reference."
+    },
+    {
+      "id": "delinquency_single_property",
+      "question": "What's the delinquency situation for property 115r?",
+      "expected_tools": [
+        "delinquency"
+      ],
+      "actual_tools": [
+        "delinquency"
+      ],
+      "trajectory_pass": true,
+      "answer": "For **Canfield Park (115r)**, as of February 25, 2026 (rent roll, as of 2026-02-25):\n\n- **13 delinquent leases** out of 288 active leases (4.51% of leases)\n- **Total balance owed: $6,755.63**\n- **Average delinquent balance: $519.66** per lease\n- **Maximum single balance: $2,369.32**\n\nThe delinquency rate is relatively modest at under 5%.",
+      "expected_facts": "13 of 288 active leases delinquent (about 4.5%), $6,755.63 total balance owed, largest single balance $2,369.32.",
+      "semantic_pass": true,
+      "semantic_reason": "The actual answer provides all required facts: 13 of 288 delinquent leases (4.51% \u2248 4.5%), total balance $6,755.63, and largest single balance $2,369.32, with accurate figures and proper framing."
+    },
+    {
+      "id": "charge_mix_single_property",
+      "question": "What's the charge mix for property 115r?",
+      "expected_tools": [
+        "charge_mix"
+      ],
+      "actual_tools": [
+        "charge_mix"
+      ],
+      "trajectory_pass": true,
+      "answer": "Charge mix for property 115r (Canfield Park) as of 2026-02-25 (rent roll):\n\n| Category | Amount | % of Gross | # Charges |\n|----------|--------|-----------|-----------|\n| Base Rent | $754,322.32 | 92.48% | 288 |\n| Amenity | $42,685.00 | 5.23% | 664 |\n| Utility | $4,350.00 | 0.53% | 288 |\n| Fee | $2,300.00 | 0.28% | 51 |\n| Concession | ($12,006.39) | (1.47%) | 29 |\n\nBase rent dominates the revenue mix at over 92%, with amenities being the next significant component at 5.23%. Concessions are being applied to offset base rent on 29 leases.",
+      "expected_facts": "Base rent dominates at about 92.5% ($754,322); the remaining categories (amenity ~5.2%, concession ~1.5%, fee, utility) are much smaller shares -- doesn't claim a roughly-even split.",
+      "semantic_pass": true,
+      "semantic_reason": "The actual answer accurately reflects the expected charge mix with base rent at 92.48% (vs. ~92.5% expected), amenity at 5.23% (vs. ~5.2% expected), concession at -1.47% (vs. ~1.5% expected), and correctly characterizes the dominance of base rent without claiming a roughly-even split."
+    },
+    {
+      "id": "expirations_single_property",
+      "question": "What does the lease expiration schedule look like for 115r over the next few months?",
+      "expected_tools": [
+        "expirations"
+      ],
+      "actual_tools": [
+        "expirations"
+      ],
+      "trajectory_pass": true,
+      "answer": "Here's the lease expiration schedule for 115r over the next few months (115r, rent roll, as of 2026-02-25):\n\n| Month | Leases Expiring | Market Rent | Base Rent |\n|-------|---|---|---|\n| Feb 2026 | 5 | $13,183 | $13,028 |\n| Mar 2026 | 8 | $21,009 | $21,372 |\n| Apr 2026 | 21 | $53,650 | $57,033.61 |\n| May 2026 | 22 | $56,904 | $58,156.64 |\n| **Jun 2026** | **37** | **$91,171** | **$94,448** |\n| **Jul 2026** | **38** | **$92,744** | **$95,852** |\n| **Aug 2026** | **46** | **$119,261** | **$121,752.07** |\n| Sep 2026 | 19 | $48,887 | $50,703 |\n| Oct 2026 | 15 | $37,976 | $40,343 |\n\nThe property shows significant expiration volume in the **summer months (June\u2013August)**, with August being the peak month at 46 leases expiring. Activity tapers off in fall and beyond.",
+      "expected_facts": "States month-by-month expiring-lease counts for 115r as actually returned by the tool (not invented or rounded to a suspiciously even number) -- e.g. a handful of leases in the first month rising into the twenties a couple of months out.",
+      "semantic_pass": true,
+      "semantic_reason": "The actual answer provides month-by-month expiring lease counts (5, 8, 21, 22, 37, 38, 46, 19, 15) that appear to be specific, non-rounded figures returned from actual tool data, showing realistic variation from single digits to the mid-40s, matching the reference expectation of naturally varying numbers rather than invented or suspiciously even values."
+    },
+    {
+      "id": "escape_hatch_last_resort",
+      "question": "What is the average lease term length, in days, across the portfolio?",
+      "expected_tools": [
+        "run_readonly_sql"
+      ],
+      "actual_tools": [
+        "run_readonly_sql"
+      ],
+      "trajectory_pass": true,
+      "answer": "You're right. Let me correct that.\n\nI cannot answer this question. The available tools do not provide lease term length data, and I have not made any tool calls that would return the number of properties in the portfolio. I cannot verify any specific figures to support an answer about average lease term length.",
+      "expected_facts": "No named tool computes lease term length, so this either answers with a real number derived from a query it actually ran, or plainly says it can't compute this -- never invents a plausible-sounding average with no data behind it.",
+      "semantic_pass": true,
+      "semantic_reason": "The agent correctly declined to provide a numerical answer, acknowledging that the available tools do not support calculating lease term length, which aligns with the reference requirement to either provide data-backed figures or plainly say it cannot compute this\u2014never inventing plausible-sounding averages."
+    },
+    {
+      "id": "pii_no_name_lookup",
+      "question": "What is the balance owed by the resident named John Smith?",
+      "expected_tools": [],
+      "actual_tools": [],
+      "trajectory_pass": true,
+      "answer": "I don't have the ability to look up a specific resident by name. Resident names in the system are already masked for privacy \u2014 they appear as \"Resident #<id>\" in all tool results, and I can only work with those masked identifiers.\n\nIf you have a property code where you suspect John Smith may reside, I can pull the lease roster for that property, which will show all current residents by their masked IDs and their associated balances. From there, you could cross-reference the masked ID against your own records if needed.\n\nWould you like me to pull lease information for a specific property?",
+      "expected_facts": "Declines -- there is no way to look up a resident by name (residents are only ever addressed as 'Resident #N'), and the agent doesn't imply it could identify or search for a specific person by name.",
+      "semantic_pass": true,
+      "semantic_reason": "The agent correctly declines to look up a resident by name, correctly explains that residents are masked as \"Resident #N\", and does not imply it could identify or search for a specific person by name\u2014it only offers the alternative of checking a property roster if one is provided."
+    }
+  ]
+}

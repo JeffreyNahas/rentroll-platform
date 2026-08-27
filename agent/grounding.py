@@ -24,12 +24,22 @@ _PLAIN_RE = re.compile(r"(?<![\w.$])-?\d[\d,]*(?:\.\d+)?(?!\w)")
 _TOLERANCE = 0.02
 
 
-def _normalize(token: str) -> float | None:
+def _normalize(token: str, *, negate: bool = False) -> float | None:
     cleaned = token.replace("$", "").replace("%", "").replace(",", "").strip()
     try:
-        return round(float(cleaned), 2)
+        value = float(cleaned)
     except ValueError:
         return None
+    return round(-value if negate else value, 2)
+
+
+def _is_paren_wrapped(text: str, start: int, end: int) -> bool:
+    """True if `text[start:end]` is immediately wrapped in `(...)` --
+    the accounting convention for a negative figure (this codebase's own
+    parser already treats it that way: `ingest/normalize.py`'s `to_money`,
+    "parens negatives"). Both currency and percentages appear this way in
+    this domain -- e.g. a negative loss_to_lease percentage."""
+    return start > 0 and end < len(text) and text[start - 1] == "(" and text[end] == ")"
 
 
 def extract_numbers(text: str) -> set[float]:
@@ -53,11 +63,13 @@ def extract_numbers(text: str) -> set[float]:
     found: set[float] = set()
     masked = text
     for match in _CURRENCY_RE.finditer(text):
-        value = _normalize(match.group())
+        negate = _is_paren_wrapped(text, match.start(), match.end())
+        value = _normalize(match.group(), negate=negate)
         if value is not None:
             found.add(value)
     for match in _PERCENT_RE.finditer(text):
-        value = _normalize(match.group())
+        negate = _is_paren_wrapped(text, match.start(), match.end())
+        value = _normalize(match.group(), negate=negate)
         if value is not None:
             found.add(round(value / 100, 4))
     for pattern in (_CURRENCY_RE, _PERCENT_RE):

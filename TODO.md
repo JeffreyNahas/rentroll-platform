@@ -10,17 +10,19 @@ For the interview-facing view, see `docs/walkthrough.md`.
 
 ## Next
 
-- [ ] **Evals.** Golden question set, tool-trajectory scoring, exact numeric
-  checks, `evals/report.md`. `agent.run.answer()` is import-only and
-  FastAPI-free specifically so this can call it directly.
-
-## After that
 - [ ] **Dynamic dashboards.** Chart-spec tool the agent invokes; Vega-Lite
   or similar; pin to a canvas; PNG/CSV/PDF export. Plan in
   `docs/journal.md`.
+
+## After that
 - [ ] **Tests.** Synthetic fixtures for the parsers (never real files),
   parser unit tests, loader integration test against a scratch DB.
 - [ ] **README.** Quickstart, ERD, data-quality summary, eval results.
+- [ ] **Multi-sample evals.** Run each golden question N times, report a
+  pass rate instead of a single-sample pass/fail -- the agent is
+  non-deterministic (default temperature) and this session directly
+  observed a question's tool choice and phrasing both varying run to
+  run. See `evals/run.py`.
 
 ## Nice-to-have (not on critical path)
 
