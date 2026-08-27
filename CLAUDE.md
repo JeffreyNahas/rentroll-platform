@@ -97,8 +97,11 @@ Applies to anything added from here on.
 | `STATUS.md` | Start of every work session — what shipped, DB row counts, next step |
 | `TODO.md` | Planning the next task |
 | `docs/journal.md` | Understanding *why* a past decision was made, or what mistake it fixed |
+| `PRODUCT.md` | Who the dashboard is for, what it must prove, durable product facts |
+| `DESIGN.md` | The dashboard's visual system — tokens, components, the rules that keep new UI on-world |
 | `docs/architecture.md` | Designing new tables, views, or services |
 | `docs/api.md` | Endpoint catalogue, envelope shape, escape-hatch guard |
+| `docs/dashboard.md` | Dashboard pages, the drawn-sheet component vocabulary, `make dashboard` |
 | `docs/data_quality.md` | Working on parsers, investigating a reconciliation failure |
 | `docs/walkthrough.md` | Prepping for the interview |
 

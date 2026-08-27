@@ -12,7 +12,7 @@ For a log of past decisions and mistakes, see `docs/journal.md`.
 | Component | Notes |
 |---|---|
 | `docker-compose.yml` | Postgres 16 + Adminer, healthchecked |
-| `Makefile` | `up down reset migrate load discover parse eval test lint` |
+| `Makefile` | `up down reset migrate load discover parse api web dashboard eval test lint` |
 | `db/migrations/001_*` | Full schema DDL |
 | `db/migrations/002_*` | 32 charge codes with categories |
 | `db/migrations/003_*` | `rri_readonly` role, SELECT-only, 5s timeout |
@@ -26,6 +26,8 @@ For a log of past decisions and mistakes, see `docs/journal.md`.
 | `db/migrations/004_gold_views.sql` | 9 gold views: `v_latest_snapshot`, `v_lease_detail`, `v_occupancy_by_property` (with `occupancy_source`), `v_loss_to_lease`, `v_delinquency_by_property`, `v_charge_mix_by_property`, `v_expirations_by_month`, `v_portfolio_summary_by_type`, `v_data_quality_summary`. All granted to `rri_readonly` |
 | `api/` | FastAPI tool backend (`app`, `db`, `envelope`, `routes`, `sql`, `sql_guard`). `make api` on `:8000`. 13 endpoints — one per gold view + `/portfolio/data-quality/failures` (detailed rows with a `note`) + `/properties/{code}/leases?section=` (paginated, PII-masked) + guarded `POST /run-readonly-sql`. Two connection pools, response envelope with `sources` + `warnings`, sqlglot AST guard, `query_audit` logging. Full spec in `docs/api.md`. |
 | `db/migrations/005_lease_detail_include_future.sql` | `v_lease_detail` no longer filters on `section` — future applicants now reachable through `/properties/{code}/leases?section=future`. Downstream views unaffected (they filter on `lease_status`). |
+| `dashboard-app/` | **Canonical dashboard.** Next.js 16 + React 19 + Tailwind v4. `make dashboard` on `:3000` (`make web` now runs only the superseded `web/`). Two pages: `/` (portfolio sheet — title block, 25-row property schedule with shared scale, occupancy by type, expirations stacked by type, revision margin) and `/properties/[code]` (title block, loss-to-lease or hatched out-of-scope panel, delinquency, charge mix, paginated leases table). Server components + `revalidate: 60`; only `LeasesTable` is a client component. Tremor removed — every chart is hand-drawn CSS/SVG with no client JS. Full spec in `docs/dashboard.md`; visual system in `DESIGN.md`. |
+| `web/` | **Superseded.** The Next 14 + Tremor first pass. Kept until the migration is confirmed; do not add to it. |
 
 ## Loaded database state
 
@@ -88,11 +90,44 @@ The 3 audit failures are the known file-level source oddities documented in
   `SELECT 1; DROP TABLE property;` → blocked ("multiple statements");
   `WITH … SELECT` → executed. All 5 attempts written to `query_audit`.
 
+## Verified against the dashboard
+
+- `make api` + `make web`, browse to `:3000`.
+- Overview renders 200 with: 5 KPI cards (no blended occupancy %, rule
+  #4), occupancy-by-type bar chart, expirations next-12-months chart,
+  properties table with `TypeBadge` + `OccupancySourceBadge` per row,
+  data-quality panel showing all 6 failure rows with human notes.
+- `/properties/115r` — availability_report badge (green), full KPI row,
+  loss-to-lease with negative-delta explanation, charge mix donut,
+  Resident #N in the leases table.
+- `/properties/153c` — rent_roll_derived badge (amber), same layout,
+  warnings inline explaining why the fallback source is used.
+- `/properties/144r?section=future` — 32 future applicants render,
+  `future_applicants` warning attached.
+
+## Verified after the redesign (dashboard-app)
+
+- All five inspected viewports report **0px horizontal overflow**
+  (1440×900 and 390×844 on both pages, plus 153c commercial).
+- Production build succeeds; the direction contract survives it and is
+  greppable in `.next/server` by its seed key `c0872ef5`.
+- Leases pagination works end to end: 1–100 → 101–200 → Next disabled on
+  the last page; `offset` round-trips through the URL. No console errors.
+- Contrast: every text token ≥4.5:1 on the sheet; `--color-ink-faint`
+  (2.9:1) is used for non-text only. Chart palette re-validated against
+  the shipped surface `#f4f2e9`.
+- Charge mix on 115r reads $754,322 base rent at 92.5% — still matching
+  `docs/data_quality.md` to the cent after the chart was rebuilt by hand.
+- `DESIGN.md` + `.impeccable/design.json` written from the built code (ground
+  truth, not the direction contract's intent). One drift caught in the
+  process: `TitleBlock`'s `Field` cells no longer use the `.tb-field` CSS
+  class defined in `globals.css` — they moved to inline utility classes
+  during the mobile-column fix, leaving `.tb-field` dead. Flagged, not
+  silently removed; see `TODO.md`.
+
 ## Immediate next step
 
-**Presentation layer.** Next.js + TS dashboard preferred (hits the JD
-stack, patches a stated gap); Streamlit is the time-boxed fallback. Tiles
-from `/portfolio/summary`, a property picker driving
-`/properties/{code}` + `/properties/{code}/leases`, expirations chart from
-`/expirations`, and a data-quality panel from `/portfolio/data-quality`
-that surfaces the 3 known audit failures.
+**Agent.** Curated read-only toolbelt where each tool maps to one API
+endpoint; sqlglot AST guard already exists; add citations and a numeric
+grounding check that verifies every figure in the response appeared in
+tool output. Then evals.

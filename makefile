@@ -1,6 +1,7 @@
-.PHONY: help up down reset migrate load discover parse api eval test lint
+.PHONY: help up down reset migrate load discover parse api web eval test lint
 DIR ?= data/raw
 PORT ?= 8000
+WEB_PORT ?= 3000
 
 help:
 	@grep -E '^[a-z-]+:.*##' Makefile | sed 's/:.*##/\t/'
@@ -30,6 +31,12 @@ parse:     ## run both parsers across all 50 files and reconcile (no db)
 
 api:       ## run the fastapi dev server (PORT=8000 by default)
 	uvicorn api.app:app --reload --port $(PORT)
+
+web:       ## run the old next 14 dashboard in web/ (WEB_PORT=3000)
+	cd web && npm run dev -- --port $(WEB_PORT)
+
+dashboard: ## run the next 16 dashboard in dashboard-app/ (WEB_PORT=3000)
+	cd dashboard-app && npx next dev --port $(WEB_PORT)
 
 load:      ## parse and load all excel files (idempotent by file hash)
 	python -m ingest --dir $(DIR)
