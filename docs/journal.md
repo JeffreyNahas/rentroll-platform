@@ -9,6 +9,65 @@ they were caught.
 
 ---
 
+## 2026-08-28 — Evals: the harness found two real bugs on its first run
+
+Built `evals/` (`golden_set.py`, `judge.py`, `run.py`) per the user's
+explicit scope: exactly two recorded metrics, tool trajectory (exact set
+match) and semantic response accuracy (LLM judge via a forced tool call
+for structured output, not JSON-in-prose parsing). 13 golden questions,
+facts pulled live from the running API while writing the set rather than
+guessed -- a wrong reference fact would miscalibrate the judge in either
+direction.
+
+**Decisions**
+- **Two metrics, not three.** `TODO.md` had also mentioned "exact numeric
+  checks" as a separate metric; folded into semantic accuracy instead,
+  since `agent/grounding.py` already enforces numeric correctness inside
+  the agent itself -- evals doesn't need to re-check what production
+  already guards. Updated `TODO.md` to match.
+- **Golden set is a Python module, not a JSON/YAML file.** No parser, no
+  schema, `import` is the loader -- one dataclass, one list.
+- **`expected_facts` is prose, not substrings.** The judge does semantic
+  comparison; exact-string matching prose would be brittle against
+  paraphrasing the agent is free to do.
+- **Structured judge output via a forced tool call**, the same mechanism
+  `agent/` already uses to talk to the model -- one `response.content[0]
+  .input` read, never regex-scraping free text for a JSON blob.
+
+**Found on the very first run** (not hypothetical -- this is what the
+harness is for):
+- **`charge_mix_single_property` failed closed on a fully correct
+  answer.** The model wrote `($12,006.39)` for a negative concession
+  amount (accounting notation -- this codebase's own parser already has
+  a name for this: `ingest/normalize.py`'s `to_money`, "parens
+  negatives"), but `agent/grounding.py`'s currency regex stripped the
+  parens and read it as *positive* 12006.39, which matched nothing.
+  Fixed by checking for a wrapping `(...)` around a currency/percent
+  match and negating -- scoped to currency and percent only, not bare
+  numbers, since a parenthesized plain integer is far more ambiguous in
+  ordinary prose ("(25 properties)" is not a "negative 25" claim).
+- **`pii_no_name_lookup` failed closed on a reasonable decline.** Asked
+  for a resident's balance by name; the model correctly declined and
+  explained residents are masked, but illustrated the format with an
+  invented example ("e.g. Resident #42") -- 42 wasn't a real identifier
+  from any tool call (there wasn't one), so grounding correctly rejected
+  it. Not a grounding bug -- fixed the actual behavior with one line in
+  `agent/prompts.py` telling the model not to invent illustrative example
+  numbers, rather than trying to teach the checker to distinguish "real
+  claim" from "example" (a much harder, more fragile problem).
+
+Both fixed and reverified live: 13/13 semantic accuracy on the second
+run. 11/13 tool trajectory -- the two shortfalls are the agent calling
+one reasonable extra tool (e.g. `list_properties` alongside
+`loss_to_lease`), not bugs, just stricter than exact-set-equality scoring
+allows. Documented, not chased.
+
+**Follow-ups**
+- Multi-sample scoring (`TODO.md`) -- single-sample pass/fail is a
+  snapshot given the agent's non-determinism, not a stable score.
+
+---
+
 ## 2026-08-27 — Streaming progress, inline citations, resizable dock
 
 Three follow-ups to the agent, all requested directly: citations inline

@@ -29,6 +29,7 @@ For a log of past decisions and mistakes, see `docs/journal.md`.
 | `dashboard-app/` | **Canonical dashboard.** Next.js 16 + React 19 + Tailwind v4. `make dashboard` on `:3000`. Two pages: `/` (portfolio sheet — title block, 25-row property schedule with shared scale, occupancy by type, expirations stacked by type, revision margin) and `/properties/[code]` (title block, loss-to-lease or hatched out-of-scope panel, delinquency, charge mix, paginated leases table). Server components + `revalidate: 60`; `LeasesTable` and `CommandDock` (agent chat, see below) are the only client components. Tremor removed — every chart is hand-drawn CSS/SVG with no client JS. Full spec in `docs/dashboard.md`; visual system in `DESIGN.md`. |
 | `agent/` | Curated tool-use agent (Anthropic SDK). One tool per API endpoint, calling the running FastAPI server over HTTP — no direct DB access, so every answer inherits PII masking, `sources`/`warnings`, and the sqlglot guard for free. Numeric grounding check (`agent/grounding.py`) verifies every figure in a draft answer against this turn's tool output; one retry, then fails closed with "I can't verify that figure from the data." Mounted as `POST /agent/ask` in `api/agent_routes.py`. The dashboard's command dock is now live. Full spec in `docs/agent.md`. |
 | `db/migrations/006_portfolio_totals_view.sql` | `v_portfolio_totals` — one-row portfolio-wide grand totals (straight sums, never a blended ratio). New `GET /portfolio/totals` + `portfolio_totals` agent tool. Added because "how many units in total" had no legitimate grounded answer; `total_units` and `total_rentable_units` are both exposed because they disagree, with a `unit_total_source_gap` warning explaining why. |
+| `evals/` | Golden question set (13 questions, `golden_set.py`) + two recorded metrics: tool trajectory (exact set match against `expected_tools`) and semantic response accuracy (LLM judge, `judge.py`, comparing the actual answer against a prose `expected_facts` brief via a forced tool call for structured output). `python -m evals.run` / `make eval` calls `agent.run.answer()` directly — no HTTP — and writes `evals/report.md` + `evals/report.json`. Single-sample per question; the agent's non-determinism means this is a snapshot, not a stable score (multi-sample scoring is `TODO.md`'s next item). |
 
 ## Loaded database state
 
@@ -163,8 +164,24 @@ The 3 audit failures are the known file-level source oddities documented in
   properties). `CommandDock`'s transcript panel is now hand-drag
   resizable, height persisted per-viewer in `localStorage`.
 
+## Verified against evals
+
+- `make eval` end to end, 13/13 golden questions: 11/13 tool trajectory,
+  13/13 semantic accuracy (after fixes below). The two trajectory
+  "failures" are the agent reasonably calling one extra tool (e.g.
+  `list_properties` alongside `loss_to_lease`) — not a bug, just stricter
+  than exact-set-equality scoring allows; noted, not chased in this pass.
+- **Two real bugs found and fixed by the harness itself, immediately** —
+  see `docs/journal.md` 2026-08-28: accounting-notation negative numbers
+  (`($12,006.39)`) were read as positive by the grounding check, and the
+  model was inventing illustrative example numbers ("e.g. Resident #42")
+  that correctly failed grounding since they weren't real. First one
+  fixed in `agent/grounding.py`; second fixed with a one-line addition to
+  the system prompt (`agent/prompts.py`) rather than special-casing the
+  checker.
+
 ## Immediate next step
 
-**Evals.** Golden question set, tool-trajectory scoring, exact numeric
-checks, `evals/report.md`. `agent.run.answer()` was built import-only and
-FastAPI-free specifically so evals can call it directly.
+**Dynamic dashboards.** Chart-spec tool the agent invokes; Vega-Lite or
+similar; pin to a canvas; PNG/CSV/PDF export. See `TODO.md` and
+`docs/journal.md` for the existing plan sketch.
