@@ -8,13 +8,12 @@ at the bottom.
 
 ## What this is
 
-A take-home case study for an **AI & Software Engineering internship at
-Aker** — a vertically integrated real-estate firm running an internal AI
-platform over Yardi Voyager data.
+A case study for a vertically integrated real-estate firm running an internal AI
+platform over Rent Roll Data.
 
 Inputs: 25 × `Rent Roll with Lease Charges` + 25 × `Unit Availability`
-Excel exports, all as of 02/25/2026. Deliverable: private GitHub repo +
-live walkthrough. Pitch and demo one-liner: `docs/walkthrough.md`.
+Excel exports, all as of 02/25/2026. Deliverable: private GitHub repo for an analytic dashboard with an integrated agent +
+live walkthrough.
 
 ---
 
@@ -23,7 +22,7 @@ live walkthrough. Pitch and demo one-liner: `docs/walkthrough.md`.
 - **Never commit the source data.** `data/` is gitignored. Test fixtures
   must be synthetic — the rent rolls contain resident names, balances,
   and move-in dates.
-- **Never commit `.env`.** `.env.example` only, with placeholder values.
+- **Never commit `.env`.** 
 - **Never backdate commits.** Timestamps are visible in review.
 - Conventional Commits: `feat(scope):`, `fix:`, `test:`, `docs:`, `chore:`.
 - Don't merge a red build.
@@ -97,13 +96,11 @@ Applies to anything added from here on.
 | `STATUS.md` | Start of every work session — what shipped, DB row counts, next step |
 | `TODO.md` | Planning the next task |
 | `docs/journal.md` | Understanding *why* a past decision was made, or what mistake it fixed |
-| `PRODUCT.md` | Who the dashboard is for, what it must prove, durable product facts |
 | `DESIGN.md` | The dashboard's visual system — tokens, components, the rules that keep new UI on-world |
 | `docs/architecture.md` | Designing new tables, views, or services |
 | `docs/api.md` | Endpoint catalogue, envelope shape, escape-hatch guard |
 | `docs/dashboard.md` | Dashboard pages, the drawn-sheet component vocabulary, `make dashboard` |
 | `docs/data_quality.md` | Working on parsers, investigating a reconciliation failure |
-| `docs/walkthrough.md` | Prepping for the interview |
 
 Working notes on decisions and mistakes go in `docs/journal.md` at the end
 of a work session — one short entry per session. That file is the audit

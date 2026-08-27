@@ -136,12 +136,16 @@ dashboard-app/src/
       Register.tsx    # section divider + ScaleBar
       Revisions.tsx   # RevisionMargin, SheetNotes
       Charts.tsx      # occupancy, expirations, charge mix
-      CommandDock.tsx # the agent's future home
+      CommandDock.tsx # client — the agent's chat input
+      AgentTranscript.tsx # printed Q/A log, docked above the command line
   lib/                # api.ts, types.ts, format.ts
 ```
 
-Only `LeasesTable` is a client component, and only because it owns the
-section toggle and pagination; the data still comes from the server.
+`LeasesTable` and `CommandDock` are the only client components. `LeasesTable`
+owns the section toggle and pagination but the data still comes from the
+server; `CommandDock` owns live request state for `POST /agent/ask` -- the
+one place in the dashboard where a question can't be known ahead of a
+request, so it can't be a server component.
 
 **Every meaning is carried by a drawn mark first and colour second.** No
 Unicode glyph or emoji stands in for an icon. When you add a state, add it
@@ -164,7 +168,10 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 
 ## Not built
 
-- The agent chat itself. The dock is a real, honestly-disabled empty state;
-  the shell is laid out for it.
 - Sortable schedule columns, CSV export.
 - Dynamic agent-authored charts, pin-to-canvas.
+
+The command dock's chat is live as of `agent/` shipping (see `docs/agent.md`)
+-- `CommandDock.tsx` posts to `POST /agent/ask` and `AgentTranscript.tsx`
+prints the answer, sources, and warnings above the input, in the same
+ruled/monospace vocabulary as the rest of the sheet.

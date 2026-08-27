@@ -50,6 +50,10 @@ Every query endpoint returns the same shape:
   - `future_applicants` — on `/properties/{code}/leases?section=future`.
     Reminds callers these are excluded from every other metric.
   - `unprovenanced` — on `/run-readonly-sql`. Sources always `null` there.
+  - `unit_total_source_gap` — on `/portfolio/totals` whenever `total_units`
+    (raw availability-report sum) and `total_rentable_units`
+    (source-reconciled sum) disagree. Explains why, without attributing
+    the whole gap to one property.
 
 ## Endpoint catalogue
 
@@ -57,6 +61,7 @@ Every query endpoint returns the same shape:
 |---|---|---|---|
 | `GET` | `/health` | — | — |
 | `GET` | `/portfolio/summary` | `v_portfolio_summary_by_type` | — |
+| `GET` | `/portfolio/totals` | `v_portfolio_totals` | — (one row, portfolio-wide sums; no ratios) |
 | `GET` | `/portfolio/data-quality` | `v_data_quality_summary` | — (counts only) |
 | `GET` | `/portfolio/data-quality/failures` | `ingest_audit` + `property_availability` | Detailed rows with a human-readable `note` per problem |
 | `GET` | `/properties` | `property` | `?property_type=` |

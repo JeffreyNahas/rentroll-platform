@@ -9,6 +9,108 @@ they were caught — silently fixing them loses the interview asset.
 
 ---
 
+## 2026-08-27 — "How many units in total" and the temptation to loosen grounding
+
+The agent failed closed on "how many units in total": it summed
+`portfolio_summary`'s five per-type `total_units` values itself (4,006)
+instead of reading a pre-computed total, so grounding correctly rejected
+the self-computed figure. First instinct floated was to remove the
+grounding check since it was "too strict to be usable." Pushed back:
+that trades "annoyingly declines sometimes" for "confidently wrong
+sometimes," which is a worse failure mode for a project whose whole
+pitch is trustworthy numbers over messy data, and it doesn't even fix
+the actual bug -- the model's naive sum was itself a worse number than
+the source-reconciled one (see below). Landed on adding the missing
+tool instead: `v_portfolio_totals` (migration 006), `GET
+/portfolio/totals`, and a `portfolio_totals` agent tool.
+
+**Decisions**
+- **`total_units` and `total_rentable_units` are both exposed, not
+  collapsed into one "total."** They're computed differently
+  (availability-report raw count vs. `v_occupancy_by_property`'s
+  source-reconciled, non-revenue-excluded figure) and differ by more
+  than rounding -- 4,006 vs 4,000. Picking one silently would be the
+  same mistake `occupancy_source` already exists to avoid for occupancy;
+  a `unit_total_source_gap` warning does for units what
+  `occupancy_source_fallback` does for occupancy.
+- **Sums across property_type are fine; blended ratios are not.**
+  Design rule #4 forbids averaging a percentage across incommensurable
+  property types, not adding up plain counts. `v_portfolio_totals` sums
+  additive counts only and deliberately has no occupancy-percentage
+  column.
+
+**Mistakes caught**
+- **My first warning message overclaimed causation.** It said the
+  portfolio-wide total_units/total_rentable_units gap (-6) "is the 153c
+  gap" (+7). Queried the actual per-property breakdown before shipping
+  the claim: the net portfolio-wide number is the combined effect of
+  153c's +7 *and* six other properties' small negative
+  non-revenue/unclassified exclusions, not attributable to one property.
+  Caught by checking the SQL myself rather than trusting my own
+  first-draft prose -- exactly the kind of unverified claim this
+  project's numeric-grounding check exists to catch the *model* making,
+  so it was worth catching in my own writing too.
+
+## 2026-08-27 — Agent: curated toolbelt + numeric grounding
+
+Built `agent/`, the tool-use layer the command dock was waiting for.
+Named tools (one per API endpoint, `agent/tools.py`) call the *running*
+FastAPI server over HTTP rather than the database directly, so every
+answer inherits PII masking, `sources`/`warnings`, and the sqlglot guard
+for free (CLAUDE.md rule #2). `POST /agent/ask` mounts into the existing
+`api/` process; the command dock now actually asks it.
+
+**Decisions**
+- **Tools are HTTP calls to `api/`, not DB access.** `docs/api.md`
+  already promised "the agent treats the same endpoints as tools" —
+  taking that literally means zero new DB surface and zero new PII
+  handling to get right a second time.
+- **`httpx2`, not `httpx`.** This environment's `anthropic` package
+  already depends on a vendored `httpx2`/`httpcore2` pair (same API,
+  different import name) instead of standard `httpx`. Reused it rather
+  than adding a second, real `httpx` dependency alongside a transitive
+  one that does the same thing.
+- **One retry, then fail closed.** `agent/grounding.py` extracts every
+  number in the draft answer and checks it against every number
+  anywhere in this turn's tool output (structured values *and* prose —
+  an API-authored warning message that already says "7 properties" is a
+  legitimate source for that figure). Ungrounded → one corrective retry
+  → still ungrounded → the fixed sentence, per rule #1.
+
+**Mistakes caught**
+- **The plain-number regex re-matched fragments inside comma-grouped
+  currency.** `$3,012` in a drafted answer was independently re-matched
+  by the plain-number pattern starting just after the comma, yielding a
+  spurious `012` → `12.0`, which doesn't exist in any tool result. This
+  wrongly fired the fail-closed path on a fully correct answer. Caught by
+  testing a real leases question end-to-end, not by unit tests written
+  against my own assumptions. Fixed by masking currency/percent spans
+  before running the plain-number pass.
+- **Small identifiers coincidentally "ground" miscounted totals.** Asked
+  the agent to break down properties by type; it tallied raw
+  `list_properties` rows itself instead of reading
+  `portfolio_summary.n_properties`, and miscounted (11 residential
+  instead of 12). Grounding didn't catch it — `property_id` runs 1-25, so
+  small hand-counted totals coincidentally matched *some* id in the same
+  response and looked "grounded" even though they were wrong. Fixed two
+  ways: `agent/grounding.py` now excludes any `*_id` field from the
+  grounded-number pool, and the system prompt now says to prefer a
+  pre-aggregated tool over tallying a row-level one. Neither guarantees
+  correctness — grounding verifies a number *appeared*, not that it's the
+  *right* number — that gap is exactly what the evals harness (next up)
+  needs to measure across more than one model sample.
+
+**Follow-ups**
+- Evals harness (`TODO.md`) — `agent.run.answer()`'s signature was kept
+  import-only and FastAPI-free specifically so evals can call it directly.
+- Named-tool calls aren't written to `query_audit` yet (only the SQL
+  escape hatch is, unchanged from before the agent existed);
+  `query_audit.tool_name`/`question` are already generic enough to carry
+  it if wanted later.
+- Streaming responses, dynamic agent-authored charts.
+
+---
+
 ## 2026-08-27 — Dashboard redesign: the engineering sheet
 
 Replaced the dashboard's visual world. The brief was narrow — "green and
