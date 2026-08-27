@@ -121,6 +121,59 @@ def portfolio_summary() -> dict:
     return envelope(rows, sources, started)
 
 
+@portfolio.get("/totals", summary="Portfolio-wide grand totals")
+def portfolio_totals() -> dict:
+    """One row, portfolio-wide. Straight sums of `v_portfolio_summary_by_type`'s
+    per-type additive counts -- never a blended ratio (design rule #4), so
+    there is no portfolio-wide occupancy percentage here. `total_units` and
+    `total_rentable_units` are both exposed because they answer different
+    questions and routinely disagree: `total_units` sums each property's
+    raw availability-report count; `total_rentable_units` sums the
+    source-reconciled, non-revenue-excluded figure `v_occupancy_by_property`
+    already computes per property. The portfolio-wide gap between them is
+    the *net* of many small per-property effects (non-revenue/unclassified
+    exclusions on availability-sourced properties, source-reconciled
+    fallbacks on the 7 rent_roll_derived ones) -- it is not attributable to
+    any single property, even though 153c's +7 rent-roll-vs-availability
+    disagreement is the largest individual contributor (see
+    docs/data_quality.md)."""
+    started = time.perf_counter()
+    with readonly_conn() as conn:
+        row = conn.execute("""
+            SELECT n_properties, total_units, non_revenue_units,
+                   unclassified_units, total_rentable_units,
+                   total_occupied_units, total_notice_units,
+                   total_vacant_units, n_leases_current, n_leases_notice,
+                   n_leases_vacant, total_market_rent, total_base_rent
+            FROM v_portfolio_totals
+        """).fetchone()
+        sources = build_sources(conn)
+
+    warnings: list[ApiWarning] = []
+    if row["total_units"] != row["total_rentable_units"]:
+        warnings.append(ApiWarning(
+            code="unit_total_source_gap",
+            message=(
+                f"total_units ({row['total_units']}) and total_rentable_units "
+                f"({row['total_rentable_units']}) are not the same number. "
+                "total_units is each property's raw availability-report "
+                "count; total_rentable_units is the source-reconciled figure "
+                "v_occupancy_by_property computes per property (non-revenue "
+                "and unclassified units excluded; the rent roll used instead "
+                "of the availability report wherever occupancy_source is "
+                "rent_roll_derived -- i.e. the availability report's own "
+                "occupied/notice/vacant states don't reconcile, or it "
+                "reports total_units=0 -- e.g. 153c, whose availability "
+                "report shows 0 units against 7 current rent-roll leases). "
+                "The portfolio-wide gap is the net of many such "
+                "per-property effects, not one single cause. "
+                "total_rentable_units is the more trustworthy figure for "
+                "'how many units'."
+            ),
+        ))
+    return envelope([row], sources, started, warnings)
+
+
 @portfolio.get("/data-quality", summary="Long-form data-quality metrics")
 def data_quality() -> dict:
     """Backs the dashboard's data-quality *summary* tile. Counts only. For

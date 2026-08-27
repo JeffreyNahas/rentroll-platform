@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.agent_routes import router as agent_router
 from api.db import close_pools, open_pools, readonly_conn, settings
 from api.routes import metrics, portfolio, properties
 from api.sql import router as sql_router
@@ -52,6 +53,7 @@ app.include_router(portfolio, prefix="/portfolio", tags=["portfolio"])
 app.include_router(properties, prefix="/properties", tags=["properties"])
 app.include_router(metrics, tags=["metrics"])
 app.include_router(sql_router, tags=["sql"])
+app.include_router(agent_router, tags=["agent"])
 
 
 # ── health ────────────────────────────────────────────────────────────────

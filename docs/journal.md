@@ -5,7 +5,323 @@ made and any mistake worth remembering. Facts about the *what* live in the
 code; this file exists for the parts a `git log` doesn't tell you.
 
 **Discipline:** one short entry per work session. Include mistakes and how
-they were caught — silently fixing them loses the interview asset.
+they were caught.
+
+---
+
+## 2026-08-27 — Streaming progress, inline citations, resizable dock
+
+Three follow-ups to the agent, all requested directly: citations inline
+in the answer prose (not just the separate `sources` block), live
+progress in the command dock while the agent works instead of a static
+"Asking…", and a resizable transcript panel.
+
+**Decisions**
+- **Progress-only streaming, not token-by-token text.** Confirmed with
+  the user before building: the answer has to stay atomic because
+  grounding can still discard and replace it with the fail-closed
+  sentence — streaming visible text that might get retracted a moment
+  later is worse UX than a short wait. `agent/client.py`'s
+  `run_conversation_stream` yields `tool_start`/`tool_done` around each
+  tool call; `agent/run.py`'s `answer_stream` forwards those live, adds
+  its own `status` event around a grounding retry, and always ends in
+  exactly one `done` event — even on an exception, via a wrapping
+  try/except that yields `error` then `done` rather than letting the
+  generator crash mid-stream.
+- **One implementation of the loop, not two.** `run_conversation` (used
+  nowhere anymore, kept as the non-streaming building block) and
+  `answer()` (still what evals will call) are now both thin wrappers that
+  drain the streaming generator and take its terminal event. Avoided
+  maintaining the tool-use loop's logic twice.
+- **SSE by hand over `fetch`, not `EventSource`.** `EventSource` can't
+  send a POST body, and the question has to go in the body. Parsed
+  manually off `response.body.getReader()` in `lib/api.ts` — buffer,
+  split on `\n\n`, no new dependency.
+- **Citations are prose the model writes, guided by rule #8, not
+  app-generated markup.** The `sources` array already has everything
+  needed (`property_code`, `report_type`, `as_of_date`); the rule just
+  tells the model to use it inline. Verified the model actually picks the
+  *relevant* source when a property has both a rent-roll and an
+  availability-report source — for an occupancy question on 115r it cited
+  "availability report" (correct, since occupancy_source was
+  availability_report there) rather than blindly copying the rule's
+  literal example text of "rent roll."
+- **`useSyncExternalStore`, not `useState` + `useEffect`, for restoring
+  the persisted dock height.** The obvious first draft (read
+  `localStorage` in a `useEffect`, `setState` the result) is a real,
+  common React pattern but tripped `eslint-plugin-react-hooks`'s
+  `set-state-in-effect` rule, which this repo's React Compiler setup
+  enforces as an error. `useSyncExternalStore` with a server snapshot
+  (`DEFAULT_HEIGHT`, matching SSR) and a client snapshot (read from
+  `localStorage`) gets the same result without the extra render and
+  without fighting the linter -- a real drag-time override lives in a
+  separate `useState`, since that's a genuinely different kind of change
+  (user action, not restored state).
+
+**Verified**
+- Live SSE: single-tool and 3-tool questions both stream distinct
+  `tool_start`/`tool_done` pairs before the terminal `done`.
+- Mocked grounding-retry path: `status` event appears, stream still ends
+  in exactly one `done` event, not two and not a hang.
+- Mocked exception path: `error` then `done` with a safe message, no
+  crash.
+- CORS confirmed on `/agent/ask/stream` from the dashboard's origin
+  (`Origin: http://localhost:3000`) — streaming responses go through
+  FastAPI's `CORSMiddleware` the same as any other route.
+- Full lint/type/build bar held on both sides throughout (`ruff`, `tsc`,
+  `eslint`, `prettier`, `next build`).
+
+---
+
+## 2026-08-27 — "How many units in total" and the temptation to loosen grounding
+
+The agent failed closed on "how many units in total": it summed
+`portfolio_summary`'s five per-type `total_units` values itself (4,006)
+instead of reading a pre-computed total, so grounding correctly rejected
+the self-computed figure. First instinct floated was to remove the
+grounding check since it was "too strict to be usable." Pushed back:
+that trades "annoyingly declines sometimes" for "confidently wrong
+sometimes," which is a worse failure mode for a project whose whole
+pitch is trustworthy numbers over messy data, and it doesn't even fix
+the actual bug -- the model's naive sum was itself a worse number than
+the source-reconciled one (see below). Landed on adding the missing
+tool instead: `v_portfolio_totals` (migration 006), `GET
+/portfolio/totals`, and a `portfolio_totals` agent tool.
+
+**Decisions**
+- **`total_units` and `total_rentable_units` are both exposed, not
+  collapsed into one "total."** They're computed differently
+  (availability-report raw count vs. `v_occupancy_by_property`'s
+  source-reconciled, non-revenue-excluded figure) and differ by more
+  than rounding -- 4,006 vs 4,000. Picking one silently would be the
+  same mistake `occupancy_source` already exists to avoid for occupancy;
+  a `unit_total_source_gap` warning does for units what
+  `occupancy_source_fallback` does for occupancy.
+- **Sums across property_type are fine; blended ratios are not.**
+  Design rule #4 forbids averaging a percentage across incommensurable
+  property types, not adding up plain counts. `v_portfolio_totals` sums
+  additive counts only and deliberately has no occupancy-percentage
+  column.
+
+**Mistakes caught**
+- **My first warning message overclaimed causation.** It said the
+  portfolio-wide total_units/total_rentable_units gap (-6) "is the 153c
+  gap" (+7). Queried the actual per-property breakdown before shipping
+  the claim: the net portfolio-wide number is the combined effect of
+  153c's +7 *and* six other properties' small negative
+  non-revenue/unclassified exclusions, not attributable to one property.
+  Caught by checking the SQL myself rather than trusting my own
+  first-draft prose -- exactly the kind of unverified claim this
+  project's numeric-grounding check exists to catch the *model* making,
+  so it was worth catching in my own writing too.
+
+## 2026-08-27 — Agent: curated toolbelt + numeric grounding
+
+Built `agent/`, the tool-use layer the command dock was waiting for.
+Named tools (one per API endpoint, `agent/tools.py`) call the *running*
+FastAPI server over HTTP rather than the database directly, so every
+answer inherits PII masking, `sources`/`warnings`, and the sqlglot guard
+for free (CLAUDE.md rule #2). `POST /agent/ask` mounts into the existing
+`api/` process; the command dock now actually asks it.
+
+**Decisions**
+- **Tools are HTTP calls to `api/`, not DB access.** `docs/api.md`
+  already promised "the agent treats the same endpoints as tools" —
+  taking that literally means zero new DB surface and zero new PII
+  handling to get right a second time.
+- **`httpx2`, not `httpx`.** This environment's `anthropic` package
+  already depends on a vendored `httpx2`/`httpcore2` pair (same API,
+  different import name) instead of standard `httpx`. Reused it rather
+  than adding a second, real `httpx` dependency alongside a transitive
+  one that does the same thing.
+- **One retry, then fail closed.** `agent/grounding.py` extracts every
+  number in the draft answer and checks it against every number
+  anywhere in this turn's tool output (structured values *and* prose —
+  an API-authored warning message that already says "7 properties" is a
+  legitimate source for that figure). Ungrounded → one corrective retry
+  → still ungrounded → the fixed sentence, per rule #1.
+
+**Mistakes caught**
+- **The plain-number regex re-matched fragments inside comma-grouped
+  currency.** `$3,012` in a drafted answer was independently re-matched
+  by the plain-number pattern starting just after the comma, yielding a
+  spurious `012` → `12.0`, which doesn't exist in any tool result. This
+  wrongly fired the fail-closed path on a fully correct answer. Caught by
+  testing a real leases question end-to-end, not by unit tests written
+  against my own assumptions. Fixed by masking currency/percent spans
+  before running the plain-number pass.
+- **Small identifiers coincidentally "ground" miscounted totals.** Asked
+  the agent to break down properties by type; it tallied raw
+  `list_properties` rows itself instead of reading
+  `portfolio_summary.n_properties`, and miscounted (11 residential
+  instead of 12). Grounding didn't catch it — `property_id` runs 1-25, so
+  small hand-counted totals coincidentally matched *some* id in the same
+  response and looked "grounded" even though they were wrong. Fixed two
+  ways: `agent/grounding.py` now excludes any `*_id` field from the
+  grounded-number pool, and the system prompt now says to prefer a
+  pre-aggregated tool over tallying a row-level one. Neither guarantees
+  correctness — grounding verifies a number *appeared*, not that it's the
+  *right* number — that gap is exactly what the evals harness (next up)
+  needs to measure across more than one model sample.
+
+**Follow-ups**
+- Evals harness (`TODO.md`) — `agent.run.answer()`'s signature was kept
+  import-only and FastAPI-free specifically so evals can call it directly.
+- Named-tool calls aren't written to `query_audit` yet (only the SQL
+  escape hatch is, unchanged from before the agent existed);
+  `query_audit.tool_name`/`question` are already generic enough to carry
+  it if wanted later.
+- Streaming responses, dynamic agent-authored charts.
+
+---
+
+## 2026-08-27 — Dashboard redesign: the engineering sheet
+
+Replaced the dashboard's visual world. The brief was narrow — "green and
+off-white, other colours for the charts" — but the incumbent look was a
+scaffold default, so this was a replacement rather than a recolour.
+`dashboard-app/` (Next 16) is now canonical; `web/` is superseded.
+
+**Decisions**
+- **The world is an engineering drawing sheet** — ISO/DIN title blocks on
+  green-grid computation-pad stock. Chosen because the project's design
+  rules map onto real drawing devices instead of being documented beside
+  them: a title block *is* rule #3, a revision margin *is* rule #6, a
+  hatched out-of-scope field *is* "by design, not by data loss", and one
+  shared scale across the schedule *is* rule #4. Prose asserting those
+  rules is worth less than a page whose anatomy enforces them.
+- **Green stopped meaning "good."** It had been the `availability_report`
+  badge colour. Once green became the ground it could no longer carry
+  status, so status moved onto drawn marks (`Glyph.tsx`) with colour only
+  confirming. This incidentally fixed a real accessibility defect: the old
+  green-vs-amber badges conveyed occupancy source by colour alone.
+- **Property type is keyed by hatch, not hue** — solid / ruled / diagonal /
+  stipple / open, the way a plat or Sanborn map keys land use. Spending
+  five hues on five badges would have left nothing for the data.
+- **Tremor removed; every chart is hand-drawn CSS/SVG.** A stock chart
+  library inside a committed world drags a second design system in — its
+  rounded cards, its default blue, its type scale. The charts here are
+  simple enough that hand-drawing them cost less than fighting the
+  library, ships zero client JS, and deleted the 40-line Tailwind v4
+  `@source inline()` safelist Tremor needed.
+- **The charge-mix donut became a stacked bar.** Eight categories where
+  base rent is ~90% is the textbook donut anti-pattern — seven unreadable
+  slivers around one dominant arc. Base rent takes graphite rather than a
+  series ink so the ~8% that actually varies is what gets the colour.
+- **The agent's shell is a command line docked to the sheet's bottom
+  edge.** A drafting application has always had one there. The input is
+  genuinely disabled and says "toolbelt not connected"; a mocked chat that
+  answered nothing would have been worse than an honest empty state.
+- **Light only, deliberately.** The use scene is a narrated screen-share
+  in a bright room and the material is paper. A lit pad has no dark mode;
+  recorded as a commitment so nobody adds one as a chore.
+
+**Mistakes caught**
+- **The recorded validator receipt cited a surface the build never
+  shipped.** The chart palette was validated against `#F2F1EA` while the
+  shipped `--color-field` is `#f4f2e9`. Caught in review. Re-ran against
+  the real token (it passes), and left the wrong figure visible in the
+  comment as a disclosed error — on a project whose whole pitch is
+  provenance, quietly overwriting a bad receipt is the wrong instinct.
+- **Amber failed the contrast floor and I had already measured it.** I
+  computed `#a8631c` at 4.19:1, wrote "use a darker one for text", then
+  used it for 11px text in five places. Now `#955714` (5.1:1). Measuring
+  and then not acting on the measurement is worse than not measuring.
+- **Hidden tooltips widened the document.** `position: absolute` elements
+  contribute to scroll width even at `opacity: 0`, giving the page a
+  phantom horizontal scrollbar. Fixed with `display: none` plus
+  `@starting-style` so the entrance animation survives.
+- **The focus ring was falling back to the 1px UA outline** on `<summary>`,
+  because the selector was a hand-listed set that missed it. Broadened to
+  bare `:focus-visible`.
+- **Full-page screenshots misrepresent `position: sticky`.** Once the dock
+  was pinned, Chrome rendered it mid-document in `fullPage` captures — it
+  read as a broken layout. Evidence for the sticky behaviour has to be a
+  true-viewport capture; the full-page shots hold the dock static at
+  capture time only.
+- **Fixing one regression opened another.** Widening the property-name
+  column on mobile pushed `% occ` out of view — re-breaking the exact rule
+  the mobile column work existed to protect. Caught by measuring the table
+  against its container at 360/375/390/414 instead of eyeballing one width.
+
+**Process note**
+Ran a finish review in a fresh context against the screenshots and code.
+It returned `fix` with eight material findings — several of them fair hits
+on claims the build made about itself. Applied all eight, recaptured, and
+the verdict pass scored every one resolved plus two minor regressions,
+which were then closed. The review is worth more than the build thread's
+own self-checks precisely because it does not inherit the build's framing.
+
+**Follow-ups**
+- The schedule asserts "one shared scale" in prose but never draws a scale
+  key; a printed key would make the claim verifiable rather than asserted.
+- The deviations margin has no revision letter/date column — it is a
+  revision *list*, not yet a revision *table*.
+- Focus rings fade in over ~150ms on elements carrying `transition-colors`,
+  which transitions `outline-color` from a layer that beats `base`. The
+  clean fix is dropping `outline-color` from that utility.
+- `web/` still exists. Delete it once the migration is confirmed.
+
+---
+
+## 2026-08-27 — Dashboard
+
+Two-page Next.js + Tremor dashboard on top of the API. `make web` on
+`:3000`; `make api` must be running.
+
+**Decisions**
+- **Two pages, no more.** Overview + Property detail. A dashboard with 12
+  routes is harder to walk through than one with 2, and the story is
+  linear: portfolio → property → row-level. No sidebar. No admin.
+- **Server components everywhere, no client fetching library.** Each
+  page is `async function Page() { const [a, b] = await Promise.all(...); }`.
+  `revalidate: 60` on every fetch. Nothing to explain about hooks,
+  loading spinners, or hydration. If a fetch is slow, the page is slow
+  — measured trade-off; sub-10ms gold-view queries make it invisible.
+- **Tremor over Recharts + hand-rolled CSS.** One dependency; KPI cards,
+  charts, and tables come styled together. The chart set is limited —
+  fine, the dashboard only uses three chart types.
+- **Design rules made visible, not just documented.** `SourcesChip` next
+  to every KPI; `OccupancySourceBadge` on every property row (green vs
+  amber); data-quality panel at the bottom of Overview reads directly
+  from `/portfolio/data-quality/failures` including the human-readable
+  `note` for each row. A reviewer can point at the pixels and quote the
+  CLAUDE.md rule number.
+- **No blended portfolio occupancy %.** The KPI card is `264 / 296`, not
+  `92%`. Rule #4 wants to be visible; leaving out the number is what
+  makes it visible.
+
+**Mistakes caught**
+- **Function props across the Server → Client boundary.** Tremor's
+  `BarChart` and `DonutChart` take `valueFormatter: (v: number) => string`.
+  Passing that from a server component throws *"Functions cannot be
+  passed directly to Client Components"*. Every chart now lives in its
+  own thin `"use client"` wrapper (`PctBarChart`, `CountBarChart`,
+  `ChargeMixDonut`); the server page only passes serializable data. This
+  is the single most common gotcha when using Tremor from App Router —
+  worth pointing at in the walkthrough.
+- **Uvicorn started from wrong CWD.** After `cd web && npm install`, the
+  shell CWD stayed in `web/`, and `uvicorn api.app:app` couldn't find
+  the `api` module. Not a code issue; a "restart your terminal" issue.
+  Documented so future-me doesn't chase it.
+
+**Verified**
+- `curl http://127.0.0.1:3005/` returns 200 with the property codes
+  `462a`, `153c`, `134c`, `139c`, `143c` all present in the SSR-rendered
+  HTML (data-quality panel is rendering).
+- `/properties/115r` shows `availability_report` badge; `/properties/153c`
+  shows `rent_roll_derived`.
+- PII masking works — `Resident #N` present in the leases table HTML.
+- `make api` + `make web` runs both without changes needed.
+
+**Follow-ups**
+- Bump Next.js: 14.2.15 has a known SSRF advisory (14.2.16+ patched).
+  Localhost demo doesn't need it, but it's a one-line change before
+  submission.
+- If a chart looks too small on mobile, revisit the fixed h-72/h-40
+  sizing — for the walkthrough on a laptop it's fine.
+- The `webpack` warning about `recharts@2.15.4` is Tremor's transitive
+  dep; upstream fix, not ours.
 
 ---
 
