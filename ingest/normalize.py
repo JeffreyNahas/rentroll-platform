@@ -50,16 +50,19 @@ def to_date(value) -> date | None:
         return value.date()
     if isinstance(value, date):
         return value
-    # Excel stores dates as days since 1899-12-30
+    # Excel stores dates as days since 1899-12-30. Naive datetimes are
+    # correct here, not an oversight: the source is a calendar date with
+    # no time-of-day or timezone component, and `.date()` discards
+    # whatever naive time this constructs anyway.
     if isinstance(value, (int, float)) and 20_000 < value < 60_000:
-        return (datetime(1899, 12, 30) + timedelta(days=int(value))).date()
+        return (datetime(1899, 12, 30) + timedelta(days=int(value))).date()  # noqa: DTZ001
 
     text = str(value).strip()
     if text.lower() in _BLANK:
         return None
     for fmt in _DATE_FORMATS:
         try:
-            return datetime.strptime(text, fmt).date()
+            return datetime.strptime(text, fmt).date()  # noqa: DTZ007
         except ValueError:
             continue
     return None

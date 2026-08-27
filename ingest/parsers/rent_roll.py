@@ -17,14 +17,13 @@ properties of the format are easy to get wrong:
      RENT third -- so column 6 cannot be assumed to be base rent.
 """
 
-from collections.abc import Iterator
 from pathlib import Path
 
 import pandas as pd
 
 from ..models import ChargeRecord, FileHeader, LeaseRecord
-from ..normalize import to_date, to_int, to_money, to_text
-from .helpers import cell, parse_header, text_at
+from ..normalize import to_date, to_int, to_money
+from .helpers import cell, check_columns, parse_header, text_at
 
 # Column positions, from the joined two-row header at rows 4-5.
 UNIT = 0
@@ -54,6 +53,7 @@ def parse_rent_roll(path: Path) -> tuple[FileHeader, list[LeaseRecord], list[str
     """Return (header, leases, warnings). Never raises on a single bad row."""
     df = pd.read_excel(path, header=None)
     header = parse_header(df, path)
+    check_columns(df, path, "rent_roll")
 
     leases: list[LeaseRecord] = []
     warnings: list[str] = []
@@ -93,24 +93,24 @@ def parse_rent_roll(path: Path) -> tuple[FileHeader, list[LeaseRecord], list[str
         if first and (unit_type or resident):
             flush()
             is_vacant = resident == VACANT
-            current = dict(
-                section=section,
-                unit_number=first,
-                unit_type=unit_type,
-                square_feet=to_int(cell(df, row, SQFT)),
-                resident_code=None if is_vacant else text_at(df, row, RESIDENT),
-                resident_name=None if is_vacant else text_at(df, row, NAME),
-                is_vacant=is_vacant,
-                market_rent=to_money(cell(df, row, MARKET_RENT)),
-                resident_deposit=to_money(cell(df, row, RESIDENT_DEPOSIT)),
-                other_deposit=to_money(cell(df, row, OTHER_DEPOSIT)),
-                balance=to_money(cell(df, row, BALANCE)),
-                move_in_date=to_date(cell(df, row, MOVE_IN)),
-                lease_expiration=to_date(cell(df, row, LEASE_EXPIRATION)),
-                move_out_date=to_date(cell(df, row, MOVE_OUT)),
-                charges=[],
-                source_row=row,
-            )
+            current = {
+                "section": section,
+                "unit_number": first,
+                "unit_type": unit_type,
+                "square_feet": to_int(cell(df, row, SQFT)),
+                "resident_code": None if is_vacant else text_at(df, row, RESIDENT),
+                "resident_name": None if is_vacant else text_at(df, row, NAME),
+                "is_vacant": is_vacant,
+                "market_rent": to_money(cell(df, row, MARKET_RENT)),
+                "resident_deposit": to_money(cell(df, row, RESIDENT_DEPOSIT)),
+                "other_deposit": to_money(cell(df, row, OTHER_DEPOSIT)),
+                "balance": to_money(cell(df, row, BALANCE)),
+                "move_in_date": to_date(cell(df, row, MOVE_IN)),
+                "lease_expiration": to_date(cell(df, row, LEASE_EXPIRATION)),
+                "move_out_date": to_date(cell(df, row, MOVE_OUT)),
+                "charges": [],
+                "source_row": row,
+            }
             # The first charge lives on the lease row itself.
             if code and code != TOTAL:
                 amount = to_money(cell(df, row, AMOUNT))

@@ -135,13 +135,6 @@ export type DataQualityFailure = {
   note: string;
 };
 
-export type PropertyRef = {
-  property_id: number;
-  property_code: string;
-  property_name: string;
-  property_type: PropertyType;
-};
-
 // /properties/{code} returns a single row whose `data[0]` bundles four
 // sub-objects together. Nulls are legitimate (loss_to_lease is null for
 // commercial and land/other).

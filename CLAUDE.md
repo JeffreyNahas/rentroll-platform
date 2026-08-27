@@ -112,7 +112,6 @@ trail; `git log` isn't enough on its own.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env          # devpass is fine, throwaway container
 make up                       # postgres on :5432, adminer on :8080
 make migrate
 make discover                 # profile source files

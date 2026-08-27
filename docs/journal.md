@@ -9,6 +9,76 @@ they were caught.
 
 ---
 
+## 2026-08-28 — Final audit: dead code, and the one failure mode that mattered
+
+Feature work is done. Ran a five-dimension audit (doc-code drift, dead
+code, consistency, failure modes, defensibility) via three parallel
+fresh-context reviews before wiring in a "no more features" pass. Fixed
+dead code (this entry) and the most severe failure mode found (below);
+doc-drift was handled separately; defensibility/consistency findings were
+mostly clean and are noted in `README.md` rather than repeated here.
+
+**Dead code removed**
+- `agent/client.py`'s `run_conversation()` -- confirmed zero callers, its
+  own docstring already said so.
+- `structlog` dropped from `requirements.txt` -- never imported; the three
+  ad hoc mechanisms already in place (`print` in `ingest`/`scripts`, a
+  DB-backed audit row in `api`, structured error events in `agent`)
+  already fit their contexts, so adopting one logging library everywhere
+  was judged a bigger change than this pass calls for.
+- Four `dashboard-app/src/lib/api.ts` functions (`properties`,
+  `delinquency`, `chargeMix`, `lossToLease`) -- confirmed unused by grep;
+  the property page gets this data through the bundled `propertyDetail()`
+  call instead. `PropertyRef` (the type only they used) went with them.
+- Assorted `ruff` findings: unused imports in `ingest/loader.py` and
+  `ingest/parsers/rent_roll.py`, a collapsible conditional, an unnecessary
+  `dict()` call, stale `noqa` comments, import ordering. Two real `DTZ`
+  findings (naive `datetime` construction in `ingest/normalize.py`) were
+  suppressed with a comment explaining why, not "fixed" -- the values are
+  calendar dates with no timezone concept, adding one would be noise.
+  `scripts/discover.py` (the one file with zero type hints against an
+  otherwise fully-typed codebase) is now typed.
+
+**The failure mode that mattered: a file with shifted or renamed columns
+loaded silently, with wrong data in the wrong fields.** Both parsers
+(`ingest/parsers/rent_roll.py`, `unit_availability.py`) read cells by
+fixed column index and never checked the index assumption against the
+file's actual header row. `scripts/discover.py` had a header-shape check,
+but it was a standalone diagnostic never called from the real load path
+in `ingest/loader.py` -- worse than a crash, since a shifted file could
+still coincidentally pass Total-row reconciliation and land in the
+database looking correct.
+
+Fixed by moving the column-expectations (previously only in
+`discover.py`) into `ingest/parsers/helpers.py` as `EXPECTED_COLUMNS`,
+adding `check_columns()` there, and calling it right after
+`parse_header()` in both parsers -- so a shifted file now raises before a
+single data cell is read, caught by the existing per-file try/except in
+`ingest/loader.py::load_directory` exactly like a missing title block
+already was. `discover.py` now imports the same `EXPECTED_COLUMNS` /
+`read_headers` instead of keeping its own copy, so the diagnostic and the
+real enforcement can't drift apart again.
+
+**Verified, not just asserted:**
+- `python scripts/batch_parse.py` after the change: still 4,106/4,106
+  per-lease reconciliations, 0 parser problems -- the new check is a
+  no-op on real, well-formed files.
+- Built a synthetic malformed file (shifted columns, never real data --
+  see `CLAUDE.md`'s synthetic-fixtures rule) and ran it through the
+  actual `ingest.loader.load_directory()` end to end: fails with a clear
+  message, recorded to `ingest_error`, rolls back cleanly, does not crash
+  the rest of the batch. Test row removed from `ingest_error` after
+  confirming (table verified back at 0 rows).
+
+**Follow-up noticed, not fixed:** `scripts/discover.py`'s own lease-count
+diagnostic (`check_rent_roll`) requires `unit_type` present, missing the
+same 153c fallback (`unit_type or resident`) the real parser has --
+`discover.py` under-counts by exactly 7, which is likely why an older doc
+draft cited 4,006 current leases where the database now has 4,013. Not
+touched this pass; flagged for whoever next edits `discover.py`.
+
+---
+
 ## 2026-08-28 — Evals: the harness found two real bugs on its first run
 
 Built `evals/` (`golden_set.py`, `judge.py`, `run.py`) per the user's

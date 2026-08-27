@@ -30,6 +30,7 @@ For a log of past decisions and mistakes, see `docs/journal.md`.
 | `agent/` | Curated tool-use agent (Anthropic SDK). One tool per API endpoint, calling the running FastAPI server over HTTP — no direct DB access, so every answer inherits PII masking, `sources`/`warnings`, and the sqlglot guard for free. Numeric grounding check (`agent/grounding.py`) verifies every figure in a draft answer against this turn's tool output; one retry, then fails closed with "I can't verify that figure from the data." Mounted as `POST /agent/ask` in `api/agent_routes.py`. The dashboard's command dock is now live. Full spec in `docs/agent.md`. |
 | `db/migrations/006_portfolio_totals_view.sql` | `v_portfolio_totals` — one-row portfolio-wide grand totals (straight sums, never a blended ratio). New `GET /portfolio/totals` + `portfolio_totals` agent tool. Added because "how many units in total" had no legitimate grounded answer; `total_units` and `total_rentable_units` are both exposed because they disagree, with a `unit_total_source_gap` warning explaining why. |
 | `evals/` | Golden question set (13 questions, `golden_set.py`) + two recorded metrics: tool trajectory (exact set match against `expected_tools`) and semantic response accuracy (LLM judge, `judge.py`, comparing the actual answer against a prose `expected_facts` brief via a forced tool call for structured output). `python -m evals.run` / `make eval` calls `agent.run.answer()` directly — no HTTP — and writes `evals/report.md` + `evals/report.json`. Single-sample per question; the agent's non-determinism means this is a snapshot, not a stable score (multi-sample scoring is `TODO.md`'s next item). |
+| `ingest/parsers/helpers.py::check_columns` | Feature work is done; final audit found the one failure mode that mattered — a file with shifted/renamed columns loaded silently, wrong data in the wrong fields, worse than a crash. Now checked right after the title block in both parsers, before any data cell is read, using the same `EXPECTED_COLUMNS` `scripts/discover.py` was already checking on its own (now shared, not duplicated). Verified against a synthetic malformed file through the real `load_directory()` path: clean rejection, recorded to `ingest_error`, no crash. See `docs/journal.md` 2026-08-28. |
 
 ## Loaded database state
 
@@ -180,8 +181,20 @@ The 3 audit failures are the known file-level source oddities documented in
   the system prompt (`agent/prompts.py`) rather than special-casing the
   checker.
 
-## Immediate next step
+## Verified against the final audit
 
-**Dynamic dashboards.** Chart-spec tool the agent invokes; Vega-Lite or
-similar; pin to a canvas; PNG/CSV/PDF export. See `TODO.md` and
-`docs/journal.md` for the existing plan sketch.
+- Five-dimension audit (doc-code drift, dead code, consistency, failure
+  modes, defensibility) run via three independent fresh-context reviews.
+  Dead code removed and the one severe failure mode (silent column-shift
+  misparse) fixed — see `docs/journal.md` 2026-08-28. Consistency and
+  defensibility both came back clean; the specific gaps found (PII
+  masking's boundary-vs-storage tradeoff, SSE-vs-WebSocket-vs-polling)
+  are written up in `README.md`'s design-decisions section rather than
+  repeated here.
+
+## Status
+
+**Feature-complete.** No more features planned — this repo is now in
+finishing/polish mode: documentation accuracy, code hygiene, and the
+README are what's left. `TODO.md`'s remaining items are explicitly
+"next week" material, not blockers.

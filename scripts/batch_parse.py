@@ -34,9 +34,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ingest.normalize import property_type  # noqa: E402
-from ingest.parsers import (  # noqa: E402
-    parse_availability, parse_charge_summary, parse_rent_roll,
+from ingest.normalize import property_type
+from ingest.parsers import (
+    parse_availability,
+    parse_charge_summary,
+    parse_rent_roll,
 )
 
 RAW = Path("data/raw")

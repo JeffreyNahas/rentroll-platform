@@ -1,28 +1,32 @@
 # TODO
 
-Prioritized backlog. Top item is the next thing to work on. Cross items
-off as they land (delete or move to `docs/journal.md`).
+Feature work is done (see `STATUS.md`). Nothing below is a blocker for
+submission -- this is the "what I'd do with another week" list, kept
+here as the working version of that answer. See `README.md` for the
+polished one.
 
 For what's already shipped, see `STATUS.md`.
-For the interview-facing view, see `docs/walkthrough.md`.
 
 ---
 
-## Next
+## With another week
 
 - [ ] **Dynamic dashboards.** Chart-spec tool the agent invokes; Vega-Lite
   or similar; pin to a canvas; PNG/CSV/PDF export. Plan in
   `docs/journal.md`.
-
-## After that
 - [ ] **Tests.** Synthetic fixtures for the parsers (never real files),
   parser unit tests, loader integration test against a scratch DB.
-- [ ] **README.** Quickstart, ERD, data-quality summary, eval results.
 - [ ] **Multi-sample evals.** Run each golden question N times, report a
   pass rate instead of a single-sample pass/fail -- the agent is
   non-deterministic (default temperature) and this session directly
   observed a question's tool choice and phrasing both varying run to
   run. See `evals/run.py`.
+- [ ] `scripts/discover.py`'s own lease-count diagnostic
+  (`check_rent_roll`) doesn't have the 153c `unit_type or resident`
+  fallback the real parser has, so it under-counts current leases by
+  exactly 7. Caught during the 2026-08-28 audit; not fixed since
+  `discover.py` is a diagnostic, not the parser of record, but worth
+  aligning so its own numbers don't mislead a future reader.
 
 ## Nice-to-have (not on critical path)
 
