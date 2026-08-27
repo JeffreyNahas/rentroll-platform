@@ -3,8 +3,8 @@
 // cached for 60s so a demo F5 doesn't re-hit the DB every time.
 
 import type {
-  AgentAskResponse,
   AgentMessage,
+  AgentStreamEvent,
   ApiResponse,
   ChargeMixRow,
   DataQualityFailure,
@@ -76,21 +76,50 @@ export const api = {
 };
 
 // Called client-side from CommandDock — a live agent turn, not a cached
-// page fetch, so it bypasses apiGet's revalidate wrapper.
-export async function askAgent(
+// page fetch, so it bypasses apiGet's revalidate wrapper. Streams
+// progress (`tool_start`/`tool_done`/`status`/`error`) via `onEvent` as
+// the agent works, terminating in exactly one `done` event carrying the
+// full answer. No EventSource here — it can't send a POST body, so this
+// parses Server-Sent Events by hand off `fetch`'s streaming body reader.
+export async function askAgentStream(
   question: string,
-  history: AgentMessage[] = []
-): Promise<AgentAskResponse> {
-  const res = await fetch(`${API_URL}/agent/ask`, {
+  history: AgentMessage[],
+  onEvent: (event: AgentStreamEvent) => void
+): Promise<void> {
+  const res = await fetch(`${API_URL}/agent/ask/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, history }),
   });
-  if (!res.ok) {
+  if (!res.ok || !res.body) {
     const body = await res.text().catch(() => "");
     throw new Error(
-      `API /agent/ask → ${res.status} ${res.statusText}: ${body}`
+      `API /agent/ask/stream → ${res.status} ${res.statusText}: ${body}`
     );
   }
-  return res.json();
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    buffer += decoder.decode(value, { stream: true });
+
+    let sep = buffer.indexOf("\n\n");
+    while (sep !== -1) {
+      const rawEvent = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const dataLine = rawEvent
+        .split("\n")
+        .find((line) => line.startsWith("data: "));
+      if (dataLine) {
+        onEvent(
+          JSON.parse(dataLine.slice("data: ".length)) as AgentStreamEvent
+        );
+      }
+      sep = buffer.indexOf("\n\n");
+    }
+  }
 }

@@ -149,6 +149,19 @@ The 3 audit failures are the known file-level source oddities documented in
   0.7815 fraction, while a wrong "0.78%" would have passed).
 - `GET /portfolio/totals` added after "how many units in total" had no
   legitimate grounded answer — see migration 006.
+- **Streaming + inline citations shipped.** `POST /agent/ask/stream`
+  (SSE) yields `tool_start`/`tool_done`/`status`/`error` progress events
+  as the tool-use loop runs, then one terminal `done` event — progress
+  only, the answer text itself is never token-streamed (it can still be
+  discarded by grounding and replaced with the fail-closed sentence).
+  `agent.run.answer()` is now a thin wrapper around `answer_stream()` —
+  one implementation, not two. System prompt rule #8 has the model cite
+  inline (`(property_code, report_type, as of date)`) right after each
+  figure; verified live on both a single-property question ("Occupancy
+  for 115r is 90% (115r, availability report, as of 2026-02-25)") and a
+  portfolio-wide one (cites report types + date generally instead of 25
+  properties). `CommandDock`'s transcript panel is now hand-drag
+  resizable, height persisted per-viewer in `localStorage`.
 
 ## Immediate next step
 

@@ -39,8 +39,16 @@ Rules, non-negotiable:
    explains why a number looks unusual (a data-source fallback, an \
    out-of-scope filter, a known reconciliation issue) rather than \
    something being hidden from the reader.
-8. Mention which properties or snapshots an answer is drawn from when \
-   that isn't obvious from the question.
+8. Cite your source inline, right after the figure it backs, whenever a \
+   tool result actually grounds the answer -- never on a decline or an \
+   unverifiable-figure response. Every tool result carries a `sources` \
+   array with exactly this information already. Format: \
+   `(property_code, report_type, as of YYYY-MM-DD)`, e.g. "Occupancy for \
+   115r is 90% (115r, rent roll, as of 2026-02-25)." When an answer spans \
+   many properties (a portfolio-wide rollup), don't list every property's \
+   citation -- cite the report type(s) and date generally instead, e.g. \
+   "across all properties (rent roll + availability report, as of \
+   2026-02-25)".
 
 Be concise. Answer the question asked; don't dump an entire tool result.\
 """

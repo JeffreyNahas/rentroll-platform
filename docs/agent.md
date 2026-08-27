@@ -2,7 +2,9 @@
 
 Curated tool-use layer over the read-only API. `agent/` is a sibling of
 `api/` and `web/`/`dashboard-app/` (see `docs/architecture.md`'s data-flow
-diagram), mounted into the same FastAPI process as `POST /agent/ask`.
+diagram), mounted into the same FastAPI process as `POST /agent/ask` (plain
+JSON) and `POST /agent/ask/stream` (Server-Sent Events, live progress --
+what the command dock uses).
 
 The design rules that shape this layer are `CLAUDE.md` #1 and #2: the
 model never computes a number, and there is no raw text-to-SQL -- only a
@@ -30,9 +32,39 @@ named toolbelt plus the existing guarded `run_readonly_sql` escape hatch.
    that figure from the data."*
 4. The response is `{answer, sources, warnings, tool_calls}` --
    `sources`/`warnings` are the de-duplicated union of every tool call's
-   own envelope fields for the turn (the agent doesn't invent its own
-   citation logic), and `tool_calls` is a trace (tool name + input +
-   latency) of what was actually queried.
+   own envelope fields for the turn, and `tool_calls` is a trace (tool
+   name + input + latency) of what was actually queried.
+5. The system prompt (rule #8) also has the model cite inline, in the
+   answer text itself, right after each figure it backs --
+   `(property_code, report_type, as of YYYY-MM-DD)` -- using the same
+   `sources` data every tool result already carries. A portfolio-wide
+   rollup cites the report types/date generally instead of listing every
+   property. This is prose the model writes, not app-generated markup, so
+   it's guided rather than guaranteed -- the `sources` block is still the
+   authoritative citation list.
+
+### Streaming (`POST /agent/ask/stream`)
+
+Same orchestration as `/agent/ask`, but `agent.run.answer_stream()` yields
+progress events as the tool-use loop runs, sent as SSE (`data: {...}\n\n`
+per event, `api/agent_routes.py`). Progress only -- the answer text itself
+is never streamed token-by-token, because it can still be discarded by the
+grounding check and replaced with the fail-closed sentence; showing text
+that might get retracted a moment later would be worse than a short wait.
+
+Event `type`s:
+
+| Type | Fields | When |
+|---|---|---|
+| `tool_start` | `tool`, `label` | Right before a named tool is called (`agent/tools.py`'s `TOOL_LABELS`, e.g. "Looking up occupancy") |
+| `tool_done` | `tool`, `label`, `ok` | Right after -- `ok` is `false` if the tool result carried an `error` |
+| `status` | `message` | A free-text progress note; currently only emitted around a grounding retry ("Double-checking the numbers…") |
+| `error` | `message` | Something failed (network, Anthropic API); always immediately followed by a `done` event -- never a bare dropped connection |
+| `done` | `answer`, `sources`, `warnings`, `tool_calls` | Terminal event, always exactly one per request -- same shape `/agent/ask` returns in one shot |
+
+`agent.run.answer()` (used by `/agent/ask` and, later, evals) is now a
+thin wrapper that drains `answer_stream()` and returns its `done` event --
+one implementation of the orchestration logic, not two.
 
 **Grounding is membership, not correctness.** The check verifies every
 number in the draft appeared *somewhere* in this turn's tool output; it
@@ -127,6 +159,7 @@ curl -s -X POST http://127.0.0.1:8000/agent/ask \
   deliberately evals-ready (plain question/history in, a typed
   `AgentResponse` out, no FastAPI import) but the harness itself isn't
   built here.
-- Streaming responses.
 - Per-call `query_audit` rows for named tools (see above).
 - Dynamic agent-authored charts / pin-to-canvas.
+- Token-by-token streaming of the answer text (deliberately out of scope
+  -- see "Streaming" above).

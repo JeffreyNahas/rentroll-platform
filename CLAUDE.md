@@ -1,7 +1,6 @@
 # CLAUDE.md
 
-Orientation for anyone (human or agent) working in this repo. Read this
-first. It stays short on purpose — everything deep lives in the docs listed
+Read this first. It stays short on purpose — everything deep lives in the docs listed
 at the bottom.
 
 ---
@@ -85,7 +84,7 @@ Applies to anything added from here on.
    failure localizes to one lease. The file-level charge summary is a
    secondary cross-check on the 16 files that have it.
 8. **PII.** Store `display_name` but gate output behind `MASK_PII`. With
-   it on, the API and agent return `Resident #4821`. Demo it on.
+   it on, the API and agent return `Resident #4821`.
 
 ---
 

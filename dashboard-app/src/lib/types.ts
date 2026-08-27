@@ -188,3 +188,15 @@ export type AgentAskResponse = {
   warnings: ApiWarning[];
   tool_calls: AgentToolCall[];
 };
+
+// POST /agent/ask/stream -- one of these per SSE `data:` line. `tool_start`/
+// `tool_done` bracket a single tool call; `status` is a free-text progress
+// note (currently only around a grounding retry); `error` always precedes
+// a `done`, never a bare dropped connection; `done` is the terminal event,
+// same shape as AgentAskResponse plus the `type` discriminant.
+export type AgentStreamEvent =
+  | { type: "tool_start"; tool: string; label: string }
+  | { type: "tool_done"; tool: string; label: string; ok: boolean }
+  | { type: "status"; message: string }
+  | { type: "error"; message: string }
+  | ({ type: "done" } & AgentAskResponse);

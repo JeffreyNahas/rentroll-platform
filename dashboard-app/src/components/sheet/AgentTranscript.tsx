@@ -16,13 +16,26 @@ export type TranscriptEntry = {
   response?: AgentAskResponse;
   error?: string;
   pending?: boolean;
+  // The live tool-call label while pending ("Looking up occupancy…",
+  // "Double-checking the numbers…") — falls back to a generic line until
+  // the first progress event arrives.
+  statusLine?: string;
 };
 
-export function AgentTranscript({ entries }: { entries: TranscriptEntry[] }) {
+export function AgentTranscript({
+  entries,
+  height,
+}: {
+  entries: TranscriptEntry[];
+  height: number;
+}) {
   if (entries.length === 0) return null;
 
   return (
-    <div className="border-rule-strong bg-field max-h-80 overflow-y-auto border-b">
+    <div
+      className="border-rule-strong bg-field overflow-y-auto border-b"
+      style={{ height }}
+    >
       <ol className="divide-rule divide-y">
         {entries.map((entry, i) => (
           <li key={i} className="px-4 py-3.5 md:px-6">
@@ -33,8 +46,8 @@ export function AgentTranscript({ entries }: { entries: TranscriptEntry[] }) {
 
             {entry.pending && (
               <p className="text-ink-3 mt-2 flex items-center gap-1.5 text-[0.8125rem]">
-                <span className="bg-amber inline-block size-1.5 shrink-0 rounded-full" />
-                Querying the portfolio…
+                <span className="bg-amber inline-block size-1.5 shrink-0 animate-pulse rounded-full" />
+                {entry.statusLine ?? "Asking…"}
               </p>
             )}
 

@@ -9,20 +9,97 @@
 // monospace vocabulary as the rest of the sheet.
 //
 // Client component because it owns live request state (in-flight, history,
-// the transcript) — the only place in the dashboard that isn't a plain
-// server-rendered read, because a question is the one thing here that
-// can't be known ahead of a request.
+// the transcript, the transcript's resized height) — the only place in the
+// dashboard that isn't a plain server-rendered read, because a question is
+// the one thing here that can't be known ahead of a request.
 
-import { useState } from "react";
-import { askAgent } from "@/lib/api";
+import { useRef, useState, useSyncExternalStore } from "react";
+import { askAgentStream } from "@/lib/api";
 import type { AgentMessage } from "@/lib/types";
 import { AgentTranscript, type TranscriptEntry } from "./AgentTranscript";
 import { GlyphEnter } from "./Glyph";
+
+const DEFAULT_HEIGHT = 320; // matches the old fixed max-h-80
+const MIN_HEIGHT = 120;
+const HEIGHT_STORAGE_KEY = "rri-command-dock-height";
+
+function clampHeight(px: number): number {
+  const max = typeof window === "undefined" ? px : window.innerHeight * 0.7;
+  return Math.min(Math.max(px, MIN_HEIGHT), max);
+}
+
+// A viewer's last chosen height, read via useSyncExternalStore rather than
+// useState+useEffect so the server snapshot (DEFAULT_HEIGHT, matching SSR)
+// and the client snapshot never fight — no hydration mismatch, and no
+// setState-in-effect render either. localStorage doesn't fire a same-tab
+// 'storage' event, and this value only needs to be read once per mount
+// (drags are tracked separately), so the subscription is a no-op.
+function subscribeNoop() {
+  return () => {};
+}
+
+function readStoredHeight(): number {
+  try {
+    const stored = window.localStorage.getItem(HEIGHT_STORAGE_KEY);
+    const parsed = stored ? Number(stored) : NaN;
+    return Number.isFinite(parsed) ? parsed : DEFAULT_HEIGHT;
+  } catch {
+    return DEFAULT_HEIGHT;
+  }
+}
+
+function readServerHeight(): number {
+  return DEFAULT_HEIGHT;
+}
 
 export function CommandDock() {
   const [entries, setEntries] = useState<TranscriptEntry[]>([]);
   const [value, setValue] = useState("");
   const [pending, setPending] = useState(false);
+
+  const storedHeight = useSyncExternalStore(
+    subscribeNoop,
+    readStoredHeight,
+    readServerHeight
+  );
+  // Overrides the stored height once the viewer drags the handle this
+  // session; null defers to whatever was persisted from a previous visit.
+  const [dragHeight, setDragHeight] = useState<number | null>(null);
+  const height = clampHeight(dragHeight ?? storedHeight);
+  const dragState = useRef<{ startY: number; startHeight: number } | null>(
+    null
+  );
+
+  function onHandlePointerDown(e: React.PointerEvent) {
+    dragState.current = { startY: e.clientY, startHeight: height };
+
+    function onMove(ev: PointerEvent) {
+      if (!dragState.current) return;
+      // Dragging the handle up grows the transcript, so height moves
+      // opposite to pointer delta.
+      const delta = dragState.current.startY - ev.clientY;
+      setDragHeight(clampHeight(dragState.current.startHeight + delta));
+    }
+
+    function onUp() {
+      dragState.current = null;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setDragHeight((h) => {
+        if (h != null) {
+          try {
+            window.localStorage.setItem(HEIGHT_STORAGE_KEY, String(h));
+          } catch {
+            // best effort only
+          }
+        }
+        return h;
+      });
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
 
   async function ask(question: string) {
     const history: AgentMessage[] = entries.flatMap((e) =>
@@ -35,27 +112,54 @@ export function CommandDock() {
     );
 
     setPending(true);
-    setEntries((prev) => [...prev, { question, pending: true }]);
+    setEntries((prev) => [
+      ...prev,
+      { question, pending: true, statusLine: "Asking…" },
+    ]);
+
+    function updateLast(patch: Partial<TranscriptEntry>) {
+      setEntries((prev) =>
+        prev.map((e, i) => (i === prev.length - 1 ? { ...e, ...patch } : e))
+      );
+    }
+
+    let errored = false;
 
     try {
-      const response = await askAgent(question, history);
-      setEntries((prev) =>
-        prev.map((e, i) => (i === prev.length - 1 ? { question, response } : e))
-      );
+      await askAgentStream(question, history, (event) => {
+        switch (event.type) {
+          case "tool_start":
+            updateLast({ statusLine: `${event.label}…` });
+            break;
+          case "status":
+            updateLast({ statusLine: event.message });
+            break;
+          case "error":
+            errored = true;
+            updateLast({ error: event.message, pending: false });
+            break;
+          case "done":
+            if (!errored) {
+              updateLast({
+                pending: false,
+                statusLine: undefined,
+                response: {
+                  answer: event.answer,
+                  sources: event.sources,
+                  warnings: event.warnings,
+                  tool_calls: event.tool_calls,
+                },
+              });
+            }
+            break;
+        }
+      });
     } catch (err) {
-      setEntries((prev) =>
-        prev.map((e, i) =>
-          i === prev.length - 1
-            ? {
-                question,
-                error:
-                  err instanceof Error
-                    ? err.message
-                    : "The agent couldn't be reached.",
-              }
-            : e
-        )
-      );
+      updateLast({
+        pending: false,
+        error:
+          err instanceof Error ? err.message : "The agent couldn't be reached.",
+      });
     } finally {
       setPending(false);
     }
@@ -71,7 +175,19 @@ export function CommandDock() {
 
   return (
     <div data-dock className="sticky bottom-0 z-20">
-      <AgentTranscript entries={entries} />
+      {entries.length > 0 && (
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize the conversation panel"
+          onPointerDown={onHandlePointerDown}
+          className="border-rule bg-field-sunk group flex h-2.5 cursor-ns-resize touch-none items-center justify-center border-t hover:bg-green-50"
+        >
+          <span className="bg-rule block h-[2px] w-8 transition-colors group-hover:bg-green-700" />
+        </div>
+      )}
+
+      <AgentTranscript entries={entries} height={height} />
 
       <form
         onSubmit={onSubmit}

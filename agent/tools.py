@@ -221,6 +221,24 @@ TOOL_SPECS: list[dict[str, Any]] = [
     },
 ]
 
+# Human-readable progress labels for the command dock's live status line
+# while a tool call is in flight (agent/client.py's streaming loop).
+TOOL_LABELS: dict[str, str] = {
+    "portfolio_summary": "Looking up portfolio summary",
+    "portfolio_totals": "Looking up portfolio totals",
+    "data_quality_summary": "Checking data quality",
+    "data_quality_failures": "Checking data quality",
+    "list_properties": "Looking up properties",
+    "property_detail": "Looking up property metrics",
+    "property_leases": "Looking up leases",
+    "occupancy": "Looking up occupancy",
+    "loss_to_lease": "Looking up loss to lease",
+    "delinquency": "Looking up delinquency",
+    "charge_mix": "Looking up charge mix",
+    "expirations": "Looking up lease expirations",
+    "run_readonly_sql": "Running a custom query",
+}
+
 
 def call_tool(name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
     """Dispatch one tool call to its API endpoint. Never raises -- API and

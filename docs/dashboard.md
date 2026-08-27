@@ -143,9 +143,11 @@ dashboard-app/src/
 
 `LeasesTable` and `CommandDock` are the only client components. `LeasesTable`
 owns the section toggle and pagination but the data still comes from the
-server; `CommandDock` owns live request state for `POST /agent/ask` -- the
-one place in the dashboard where a question can't be known ahead of a
-request, so it can't be a server component.
+server; `CommandDock` owns live request state for `POST /agent/ask/stream`
+-- the one place in the dashboard where a question can't be known ahead
+of a request, so it can't be a server component. It also owns the
+transcript panel's resized height (a hand-dragged handle, not the native
+browser resize grip -- persisted per-viewer in `localStorage`).
 
 **Every meaning is carried by a drawn mark first and colour second.** No
 Unicode glyph or emoji stands in for an icon. When you add a state, add it
@@ -172,6 +174,8 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 - Dynamic agent-authored charts, pin-to-canvas.
 
 The command dock's chat is live as of `agent/` shipping (see `docs/agent.md`)
--- `CommandDock.tsx` posts to `POST /agent/ask` and `AgentTranscript.tsx`
-prints the answer, sources, and warnings above the input, in the same
-ruled/monospace vocabulary as the rest of the sheet.
+-- `CommandDock.tsx` streams from `POST /agent/ask/stream` and
+`AgentTranscript.tsx` prints the live tool-call status line, then the
+answer (with inline citations), sources, and warnings, in the same
+ruled/monospace vocabulary as the rest of the sheet. Its height is
+resizable by dragging the ruled handle above it.

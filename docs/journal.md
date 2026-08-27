@@ -5,7 +5,71 @@ made and any mistake worth remembering. Facts about the *what* live in the
 code; this file exists for the parts a `git log` doesn't tell you.
 
 **Discipline:** one short entry per work session. Include mistakes and how
-they were caught — silently fixing them loses the interview asset.
+they were caught.
+
+---
+
+## 2026-08-27 — Streaming progress, inline citations, resizable dock
+
+Three follow-ups to the agent, all requested directly: citations inline
+in the answer prose (not just the separate `sources` block), live
+progress in the command dock while the agent works instead of a static
+"Asking…", and a resizable transcript panel.
+
+**Decisions**
+- **Progress-only streaming, not token-by-token text.** Confirmed with
+  the user before building: the answer has to stay atomic because
+  grounding can still discard and replace it with the fail-closed
+  sentence — streaming visible text that might get retracted a moment
+  later is worse UX than a short wait. `agent/client.py`'s
+  `run_conversation_stream` yields `tool_start`/`tool_done` around each
+  tool call; `agent/run.py`'s `answer_stream` forwards those live, adds
+  its own `status` event around a grounding retry, and always ends in
+  exactly one `done` event — even on an exception, via a wrapping
+  try/except that yields `error` then `done` rather than letting the
+  generator crash mid-stream.
+- **One implementation of the loop, not two.** `run_conversation` (used
+  nowhere anymore, kept as the non-streaming building block) and
+  `answer()` (still what evals will call) are now both thin wrappers that
+  drain the streaming generator and take its terminal event. Avoided
+  maintaining the tool-use loop's logic twice.
+- **SSE by hand over `fetch`, not `EventSource`.** `EventSource` can't
+  send a POST body, and the question has to go in the body. Parsed
+  manually off `response.body.getReader()` in `lib/api.ts` — buffer,
+  split on `\n\n`, no new dependency.
+- **Citations are prose the model writes, guided by rule #8, not
+  app-generated markup.** The `sources` array already has everything
+  needed (`property_code`, `report_type`, `as_of_date`); the rule just
+  tells the model to use it inline. Verified the model actually picks the
+  *relevant* source when a property has both a rent-roll and an
+  availability-report source — for an occupancy question on 115r it cited
+  "availability report" (correct, since occupancy_source was
+  availability_report there) rather than blindly copying the rule's
+  literal example text of "rent roll."
+- **`useSyncExternalStore`, not `useState` + `useEffect`, for restoring
+  the persisted dock height.** The obvious first draft (read
+  `localStorage` in a `useEffect`, `setState` the result) is a real,
+  common React pattern but tripped `eslint-plugin-react-hooks`'s
+  `set-state-in-effect` rule, which this repo's React Compiler setup
+  enforces as an error. `useSyncExternalStore` with a server snapshot
+  (`DEFAULT_HEIGHT`, matching SSR) and a client snapshot (read from
+  `localStorage`) gets the same result without the extra render and
+  without fighting the linter -- a real drag-time override lives in a
+  separate `useState`, since that's a genuinely different kind of change
+  (user action, not restored state).
+
+**Verified**
+- Live SSE: single-tool and 3-tool questions both stream distinct
+  `tool_start`/`tool_done` pairs before the terminal `done`.
+- Mocked grounding-retry path: `status` event appears, stream still ends
+  in exactly one `done` event, not two and not a hang.
+- Mocked exception path: `error` then `done` with a safe message, no
+  crash.
+- CORS confirmed on `/agent/ask/stream` from the dashboard's origin
+  (`Origin: http://localhost:3000`) — streaming responses go through
+  FastAPI's `CORSMiddleware` the same as any other route.
+- Full lint/type/build bar held on both sides throughout (`ruff`, `tsc`,
+  `eslint`, `prettier`, `next build`).
 
 ---
 
