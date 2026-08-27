@@ -10,20 +10,13 @@ For the interview-facing view, see `docs/walkthrough.md`.
 
 ## Next
 
-- [ ] **Gold views.** Start with `occupancy_by_property` (segmented by
-  property type, non-revenue units excluded from the denominator,
-  `occupancy_source` per row: `availability_report` where
-  `states_reconcile`, `rent_roll_derived` where it doesn't).
+- [ ] **Presentation layer.** Next.js + TS preferred (hits the JD stack and
+  patches a stated gap); Streamlit is the time-boxed fallback. Consume the
+  FastAPI endpoints (`docs/api.md`); every rendered number carries its
+  `sources` block. Data-quality panel that surfaces `ingest_audit` failures
+  and `unclassified_units`.
 
 ## After that
-
-- [ ] **More gold views:** loss-to-lease, expiration schedule, delinquency,
-  charge mix.
-- [ ] **FastAPI.** Metrics endpoints; every response carries a `sources`
-  block back to file and row.
-- [ ] **Presentation layer.** Next.js + TS preferred (hits the JD stack and
-  patches a stated gap); Streamlit is the time-boxed fallback. Data-quality
-  panel that surfaces `ingest_audit` failures and `unclassified_units`.
 - [ ] **Agent.** Curated read-only toolbelt, sqlglot AST guard,
   `rri_readonly` role, citations, numeric grounding check that verifies
   every figure in the response appeared in tool output.
