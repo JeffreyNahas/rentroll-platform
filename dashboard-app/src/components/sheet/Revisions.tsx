@@ -90,9 +90,14 @@ export function SheetNotes({ warnings }: { warnings: ApiWarning[] }) {
         <span className="letter text-current">Notes · {warnings.length}</span>
       </div>
       <ul className="mt-2 space-y-1.5">
-        {warnings.map((w) => (
+        {warnings.map((w, i) => (
+          // `code` alone isn't guaranteed unique here: the agent can emit
+          // two warnings with the same code but different messages (e.g.
+          // occupancy_source_fallback from two differently-filtered
+          // occupancy calls in one turn) — see agent/run.py's dedup,
+          // which keys on (code, message), not code alone.
           <li
-            key={w.code}
+            key={`${w.code}-${i}`}
             className="text-ink-2 text-[0.8125rem] leading-relaxed"
           >
             <span className="text-ink-3 font-mono text-[0.6875rem]">
