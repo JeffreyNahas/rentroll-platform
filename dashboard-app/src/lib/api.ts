@@ -6,16 +6,12 @@ import type {
   AgentMessage,
   AgentStreamEvent,
   ApiResponse,
-  ChargeMixRow,
   DataQualityFailure,
-  DelinquencyRow,
   ExpirationRow,
   LeasesResponse,
-  LossToLeaseRow,
   OccupancyRow,
   PortfolioSummaryRow,
   PropertyDetail,
-  PropertyRef,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
@@ -37,8 +33,6 @@ export const api = {
 
   dataQualityFailures: () =>
     apiGet<ApiResponse<DataQualityFailure>>("/portfolio/data-quality/failures"),
-
-  properties: () => apiGet<ApiResponse<PropertyRef>>("/properties"),
 
   propertyDetail: (code: string) =>
     apiGet<ApiResponse<PropertyDetail>>(`/properties/${code}`),
@@ -62,17 +56,6 @@ export const api = {
     const suffix = qs.toString() ? `?${qs}` : "";
     return apiGet<ApiResponse<ExpirationRow>>(`/expirations${suffix}`);
   },
-
-  delinquency: () => apiGet<ApiResponse<DelinquencyRow>>("/delinquency"),
-
-  chargeMix: () =>
-    apiGet<
-      ApiResponse<
-        ChargeMixRow & { property_code: string; property_type: string }
-      >
-    >("/charge-mix"),
-
-  lossToLease: () => apiGet<ApiResponse<LossToLeaseRow>>("/loss-to-lease"),
 };
 
 // Called client-side from CommandDock — a live agent turn, not a cached

@@ -53,22 +53,7 @@ real use scene is a narrated screen-share in a bright room.
 
 ### Chart palette
 
-Six series inks, fixed order, never cycled. Validated against the shipped
-surface — re-run this whenever `--color-field` moves:
-
-```bash
-node scripts/validate_palette.js \
-  "#1F5FA9,#D2601A,#00938A,#C99000,#7B4B9E,#4C7A22" \
-  --mode light --surface "#f4f2e9"
-```
-
-All checks pass; worst adjacent CVD ΔE 13.8, normal-vision ΔE 22.1. Ochre
-(`--color-s4`) sits at 2.51:1, so any chart using it ships direct labels
-**and** a table view — that is the validator's relief rule, not a
-preference. Do not add a seventh hue without re-running the validator.
-
-Property type in the expirations chart uses a three-slot subset validated
-all-pairs (`#1F5FA9,#00938A,#D2601A`, worst all-pairs CVD ΔE 14.0).
+Six series inks, fixed order, never cycled. 
 
 ---
 

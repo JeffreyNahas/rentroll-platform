@@ -16,35 +16,30 @@ Reports problems instead of crashing. Writes nothing to the database.
     python scripts/discover.py
 """
 
+from __future__ import annotations
+
 import re
+import sys
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# The column-header expectations live in ingest/parsers/helpers.py -- the
+# same place `check_columns` enforces them at load time -- so this
+# diagnostic and the actual parsers can never drift apart on what a
+# well-formed file looks like.
+from ingest.parsers.helpers import EXPECTED_COLUMNS as EXPECTED
+from ingest.parsers.helpers import read_headers
 
 RAW = Path("data/raw")
 
 FOLDERS = {
     "rent_roll": "Rent_Roll_with_Lease_Charges",
     "unit_availability": "Unit_Availability",
-}
-
-# Column labels we expect, in order. The reports wrap long headings across two
-# rows -- e.g. "Occupied" sits above "No Notice" -- so we join both rows first.
-EXPECTED = {
-    "rent_roll": (
-        (4, 5),  # header rows to join
-        ["Unit", "Unit Type", "Unit Sq Ft", "Resident", "Name", "Market Rent",
-         "Charge Code", "Amount", "Resident Deposit", "Other Deposit",
-         "Move In", "Lease Expiration", "Move Out", "Balance"],
-    ),
-    "unit_availability": (
-        (3, 4),
-        ["Property", "Name", "Avg. Sq Ft", "Avg. Rent", "Units",
-         "Occupied No Notice", "Vacant Rented", "Vacant Unrented",
-         "Notice Rented", "Notice Unrented", "Avail", "Model", "Down",
-         "Admin", "% Occ", "% Occ w/NonRev", "% Leased", "% Trend"],
-    ),
 }
 
 KNOWN_SECTIONS = {"Current/Notice/Vacant Residents", "Future Residents/Applicants"}
@@ -55,7 +50,7 @@ STATE_COLS = range(5, 10)      # occupied no notice, vacant x2, notice x2
 NONREV_COLS = range(11, 14)    # model, down, admin
 
 
-def text(df, row, col):
+def text(df: pd.DataFrame, row: int, col: int) -> str | None:
     """Read a cell as a stripped string, or None if it's empty."""
     if row >= len(df) or col >= df.shape[1]:
         return None
@@ -63,14 +58,7 @@ def text(df, row, col):
     return None if pd.isna(value) else str(value).strip()
 
 
-def read_headers(df, rows):
-    """Join the two header rows into one label per column."""
-    top, bottom = rows
-    return [f"{text(df, top, c) or ''} {text(df, bottom, c) or ''}".strip()
-            for c in range(df.shape[1])]
-
-
-def read_title(df):
+def read_title(df: pd.DataFrame) -> tuple[str | None, str | None, str | None]:
     """Rows 0-3 hold 'Property Name (code)' and 'As Of = date'."""
     name = code = as_of = None
     for row in range(5):
@@ -85,7 +73,7 @@ def read_title(df):
     return name, code, as_of
 
 
-def property_type(code):
+def property_type(code: str | None) -> str:
     """The code suffix tells us the property type, which drives everything else."""
     if not code:
         return "unknown"
@@ -100,7 +88,7 @@ def property_type(code):
     return "other"
 
 
-def check_rent_roll(df):
+def check_rent_roll(df: pd.DataFrame) -> tuple[dict[str, Any], list[str], list[str]]:
     """Count leases and collect charge codes.
 
     Returns (findings, problems, notes). Notes are expected variations;
@@ -180,7 +168,7 @@ def check_rent_roll(df):
              "file_summary": has_summary}, problems, notes)
 
 
-def check_availability(df):
+def check_availability(df: pd.DataFrame) -> tuple[dict[str, Any], list[str], list[str]]:
     """This report is one summary row per property, not one row per unit."""
     problems, notes = [], []
 
@@ -208,11 +196,14 @@ def check_availability(df):
              "nonrev": sum(nonrev)}, problems, notes)
 
 
-def main():
-    codes_by_type = defaultdict(set)
-    property_codes = {"rent_roll": set(), "unit_availability": set()}
-    types = {}
-    totals = defaultdict(float)
+def main() -> None:
+    codes_by_type: dict[str, set[str]] = defaultdict(set)
+    property_codes: dict[str, set[str | None]] = {
+        "rent_roll": set(),
+        "unit_availability": set(),
+    }
+    types: dict[str | None, str] = {}
+    totals: dict[str, float] = defaultdict(float)
     no_summary = []
     n_problems = n_notes = 0
 
@@ -230,7 +221,7 @@ def main():
             if columns[:len(expected_columns)] != expected_columns:
                 problems.append(f"unexpected columns: {columns[:len(expected_columns)]}")
 
-            name, code, as_of = read_title(df)
+            _name, code, as_of = read_title(df)
             if not code:
                 problems.append("no property code in title")
             if not as_of:

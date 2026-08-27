@@ -15,7 +15,7 @@ import pandas as pd
 
 from ..models import AvailabilityRecord, FileHeader
 from ..normalize import to_int, to_money
-from .helpers import cell, parse_header, text_at
+from .helpers import cell, check_columns, parse_header, text_at
 
 DATA_ROW = 5
 
@@ -35,6 +35,7 @@ ADMIN = 13
 def parse_availability(path: Path) -> tuple[FileHeader, AvailabilityRecord]:
     df = pd.read_excel(path, header=None)
     header = parse_header(df, path)
+    check_columns(df, path, "unit_availability")
 
     def count(col: int) -> int:
         return to_int(cell(df, DATA_ROW, col)) or 0

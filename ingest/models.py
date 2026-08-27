@@ -46,11 +46,12 @@ class LeaseRecord(BaseModel):
 
     @model_validator(mode="after")
     def _dates_ordered(self):
-        if self.move_in_date and self.move_out_date:
-            if self.move_out_date < self.move_in_date:
-                raise ValueError(
-                    f"unit {self.unit_number}: move_out precedes move_in"
-                )
+        if (
+            self.move_in_date
+            and self.move_out_date
+            and self.move_out_date < self.move_in_date
+        ):
+            raise ValueError(f"unit {self.unit_number}: move_out precedes move_in")
         return self
 
     @model_validator(mode="after")

@@ -8,10 +8,8 @@ the named tools in `agent.tools.TOOL_SPECS` plus the guarded escape hatch.
 `run_conversation_stream` is the one implementation of the loop; it yields
 a `tool_start`/`tool_done` event around each tool call so a caller (the
 command dock, via SSE) can show live progress, and a final `final` event
-carrying everything the old plain-return version returned. `run_conversation`
-is a thin wrapper that drains the generator for callers that don't care
-about progress (none left in this codebase, but kept as the simple
-building block a non-streaming caller would reach for).
+carrying the answer text, tool results, and call trace. `agent/run.py`'s
+`answer_stream` is the only caller.
 """
 
 from __future__ import annotations
@@ -75,7 +73,12 @@ def run_conversation_stream(messages: list[dict]) -> Iterator[dict]:
             answer = "".join(
                 block.text for block in response.content if block.type == "text"
             )
-            yield {"type": "final", "text": answer, "tool_results": tool_results, "trace": trace}
+            yield {
+                "type": "final",
+                "text": answer,
+                "tool_results": tool_results,
+                "trace": trace,
+            }
             return
 
         messages.append({"role": "assistant", "content": response.content})
@@ -119,14 +122,3 @@ def run_conversation_stream(messages: list[dict]) -> Iterator[dict]:
         "tool_results": tool_results,
         "trace": trace,
     }
-
-
-def run_conversation(messages: list[dict]) -> tuple[str, list[dict], list[dict]]:
-    """Non-streaming convenience wrapper -- drains `run_conversation_stream`
-    and returns its `final` event as the old (text, tool_results, trace)
-    tuple. Progress events are discarded."""
-    final: dict = {}
-    for event in run_conversation_stream(messages):
-        if event["type"] == "final":
-            final = event
-    return final["text"], final["tool_results"], final["trace"]
