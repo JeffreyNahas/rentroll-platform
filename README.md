@@ -1,27 +1,22 @@
-<!-- markdownlint-disable MD033 -->
+
 
 # Rent Roll Intelligence
 
-A take-home case study for an AI & Software Engineering internship at a
-vertically integrated real-estate firm: turn 50 raw Yardi Voyager exports
-(25 properties × Rent Roll with Lease Charges + Unit Availability, all as
-of 2026-02-25) into a reconciled database, a read-only API, a dashboard,
-and an LLM agent that can answer portfolio questions without ever
-computing a number itself. The shape is a bronze/silver/gold ingest
-pipeline feeding a FastAPI backend, a Next.js dashboard built as an
-engineering drawing sheet (every figure ships with its source, its
-snapshot, and its revision state), and a curated tool-use agent whose
-every answer is checked against the data that actually backed it before
-it's allowed to reach the reader. The "why" behind all of it is one
-finding from the very first pass over the files: the portfolio is
-genuinely mixed-use (residential, affordable, commercial, land,
+The goal of this project is to turn 50 raw Yardi Voyager exports
+(25 properties × Rent Roll with Lease Charges + Unit Availability) into a relational database, a read-only API, a dashboard, and an LLM agent that can answer portfolio questions without ever computing a number itself. 
+
+Built an Ingest pipeline (bronze/silver/gold) feeding a FastAPI backend, a Next.js dashboard (every figure ships with its source, its snapshot, and its revision state), and an agent with tools whose every answer is checked against the data that actually backed it before it's allowed to reach the reader. 
+
+The portfolio is mixed-use (residential, affordable, commercial, land,
 management), and mixed-use data breaks naive assumptions in specific,
-costly ways — a `WHERE charge_code = 'RENT'` filter silently zeroes five
+costly ways. For example, a `WHERE charge_code = 'RENT'` filter silently zeroes five
 commercial properties; an averaged portfolio occupancy percentage
 blends a 775-unit complex with a 3-unit retail strip into a number that
 means nothing. Everything here is built around not doing that.
 
 ---
+
+
 
 ## Quickstart
 
@@ -40,6 +35,8 @@ default). Source files are gitignored and go in
 
 ---
 
+
+
 ## Screenshots
 
 **The portfolio sheet** — title block, 25-property schedule drawn to one
@@ -47,23 +44,28 @@ shared scale, occupancy segmented by type (never blended), expirations,
 and every reconciliation deviation redlined in the margin before a
 reader gets to the numbers:
 
-![Portfolio sheet](docs/images/portfolio-sheet.png)
+![Portfolio sheet](docs/images/portfolio.png)
 
-**A property sheet, drilled into a commercial property (153c)** — the
-derived-occupancy-source badge, and loss-to-lease rendered as a hatched
-"not applicable" field rather than a blank or a zero, because commercial
-properties don't have a market-rent baseline to measure against at all:
+**A property sheet, drilled into Canfield Park (115r)** — occupancy
+source is "Reported" (both exports reconcile), and loss-to-lease is
+**negative** here: actual rent exceeds market by $22,830 (−3.1%). On this property Yardi's Market Rent field is behaving as a
+floor rather than an asking rent, a signal about the source data
+that the view surfaces rather than hides:
 
-![Property sheet, commercial, out-of-scope loss-to-lease](docs/images/property-sheet-commercial.png)
+![Property sheet, Canfield Park (115r)](docs/images/property.png)
 
-Both predate the command dock going live — the input at the bottom now
-answers questions with live tool-call progress, inline citations, and a
-resizable transcript instead of "toolbelt not connected." A screenshot
-of that is the one piece of visual documentation still missing; see
-`docs/agent.md` for what it actually does, or run it locally with the
-example in that doc.
+**The command dock, live** — a real question, answered with live
+tool-call progress, an inline citation naming the exact tool
+(`portfolio_totals`), and the same `unit_total_source_gap` note surfaced
+in the transcript rather than buried. The agent reading the reconciled
+figure instead of the naive sum, from the units-total story in the data
+quality section above and `docs/journal.md`:
+
+![Command dock answering "How many units are in the portfolio in total?"](docs/images/agent.png)
 
 ---
+
+
 
 ## Architecture
 
@@ -77,7 +79,7 @@ Excel files (50)
 Postgres    bronze (raw_row) -> silver (typed entities) -> gold (10 views)
     |
     v  api/            FastAPI, every response carries citations back to a snapshot
-    v  agent/           curated tool-use agent -- tools call api/ over HTTP, not the DB
+    v  agent/           curated tool-use agent -- tools call api/ over HTTP
     v  dashboard-app/   Next.js, server components read api/ directly
     v  evals/           golden question set, tool-trajectory + semantic-accuracy scoring
 ```
@@ -87,7 +89,7 @@ Full write-ups: `docs/architecture.md` (schema decisions), `docs/api.md`
 `docs/dashboard.md` (pages, component vocabulary), `docs/data_quality.md`
 (parser-facing detail on everything in the next section).
 
-### ERD
+### Entity Relationship Diagram
 
 ```mermaid
 erDiagram
@@ -177,6 +179,8 @@ erDiagram
     }
 ```
 
+
+
 Not pictured: `ingest_error` (parse/load failures, `source_file_id`
 nullable FK) and `query_audit` (every `run_readonly_sql` attempt, no FK —
 arbitrary SQL can touch anything). Ten gold views (plain, not
@@ -188,6 +192,8 @@ dashboard, and agent all read: `v_latest_snapshot`, `v_lease_detail`,
 `v_portfolio_totals`.
 
 ---
+
+
 
 ## Data quality findings
 
@@ -215,32 +221,34 @@ availability report's `total_units`.
 exist specifically so these are queryable, not buried in a log):
 
 - **153c**: the availability report says `total_units = 0`; the rent roll
-  has 7 current leases. Occupancy for 153c uses `rent_roll_derived` —
-  the same fallback the API's `occupancy_source` field and the
-  dashboard's badge exist to make visible on every affected property (7
-  of 25, portfolio-wide).
+has 7 current leases. Occupancy for 153c uses `rent_roll_derived` —
+the same fallback the API's `occupancy_source` field and the
+dashboard's badge exist to make visible on every affected property (7
+of 25, portfolio-wide).
 - **462a**: the file's own charge summary is internally inconsistent —
-  it reports `$30,963.00` for `SUBSIDY` and `$-30,963.00` for `SEC8CRD`,
-  but the individual charges underneath sum to `$32,273.00` / `$-32,273.00`
-  — off by `$1,310` on both, in opposite directions. The per-lease total
-  for this file still reconciles exactly; only the file-level summary
-  block is wrong. Per-lease sums are trusted, not the summary.
+it reports `$30,963.00` for `SUBSIDY` and `$-30,963.00` for `SEC8CRD`,
+but the individual charges underneath sum to `$32,273.00` / `$-32,273.00`
+— off by `$1,310` on both, in opposite directions. The per-lease total
+for this file still reconciles exactly; only the file-level summary
+block is wrong. Per-lease sums are trusted, not the summary.
 - **134c / 139c / 143c**: 3, 10, and 4 units respectively that the
-  availability report doesn't classify into Occupied/Vacant/Notice at
-  all — a residential-report-vocabulary gap on commercial files. Counted
-  and surfaced (`unclassified_units`), never redistributed across states
-  or silently dropped from a denominator.
+availability report doesn't classify into Occupied/Vacant/Notice at
+all — a residential-report-vocabulary gap on commercial files. Counted
+and surfaced (`unclassified_units`), never redistributed across states
+or silently dropped from a denominator.
 - **A structural gap fixed this session, not a data gap**: both parsers
-  read fixed column positions with no check against the file's actual
-  header row — a shifted or renamed column would have loaded silently,
-  wrong values in the wrong fields, and could in principle still pass
-  Total-row reconciliation by coincidence. Every file in this portfolio
-  is well-formed, so this never fired in practice — but a load-time
-  header-shape check (`ingest/parsers/helpers.py::check_columns`) closes
-  the gap for the next 50 files, not just these 50. See
-  `docs/journal.md`, 2026-08-28.
+read fixed column positions with no check against the file's actual
+header row — a shifted or renamed column would have loaded silently,
+wrong values in the wrong fields, and could in principle still pass
+Total-row reconciliation by coincidence. Every file in this portfolio
+is well-formed, so this never fired in practice — but a load-time
+header-shape check (`ingest/parsers/helpers.py::check_columns`) closes
+the gap for the next 50 files, not just these 50. See
+`docs/journal.md`, 2026-08-28.
 
 ---
+
+
 
 ## Design decisions, with trade-offs
 
@@ -262,7 +270,7 @@ closer coupling to this exact file format; the alternative (force it
 into a generic shape) was tried conceptually and rejected because it
 can't represent "a lease row that is also a charge row."
 
-**Bronze layer (`raw_row`, full JSONB) kept even though nothing reads it
+**Bronze layer (**`raw_row`**, full JSONB) kept even though nothing reads it
 today.** The trade-off is real storage cost — 19,525 rows of duplicated
 source data — for the ability to replay any parser change without
 re-reading spreadsheets that may not be sitting on disk next time. Worth
@@ -321,6 +329,8 @@ turn.
 
 ---
 
+
+
 ## Evals
 
 `evals/golden_set.py` — 13 questions, facts pulled live from the running
@@ -328,11 +338,11 @@ API while writing the set, not guessed. Two recorded metrics, both
 scored automatically by `python -m evals.run` / `make eval`:
 
 - **Tool trajectory** — exact-set match between the tools the agent
-  actually called and the expected set per question.
+actually called and the expected set per question.
 - **Semantic response accuracy** — an LLM judge (`evals/judge.py`, forced
-  tool-use for structured output) comparing the actual answer against a
-  prose brief of what a correct answer must convey, tolerant of
-  phrasing, strict on substance.
+tool-use for structured output) comparing the actual answer against a
+prose brief of what a correct answer must convey, tolerant of
+phrasing, strict on substance.
 
 Last run: **13/13 semantic accuracy, 11/13 tool trajectory** (`evals/report.md`).
 The two trajectory shortfalls are the agent reasonably calling one extra
@@ -344,32 +354,35 @@ snapshot given the agent's non-determinism, not a stable score — see
 
 ---
 
+
+
 ## What I'd do with another week
 
 - **Multi-sample evals.** Run each golden question N times and report a
-  pass *rate*. This session directly observed the same question calling
-  different tools or landing on different phrasing run to run — a
-  single-sample score is a snapshot, not evidence of stability.
+pass *rate*. This session directly observed the same question calling
+different tools or landing on different phrasing run to run — a
+single-sample score is a snapshot, not evidence of stability.
 - **Real tests.** Synthetic fixtures for the parsers (never the real
-  files — they contain resident names, balances, move-in dates), parser
-  unit tests, a loader integration test against a scratch database. The
-  actual safety net right now is the reconciliation batch, which is real
-  but not the same thing as tests that survive a refactor.
+files — they contain resident names, balances, move-in dates), parser
+unit tests, a loader integration test against a scratch database. The
+actual safety net right now is the reconciliation batch, which is real
+but not the same thing as tests that survive a refactor.
 - **Dynamic, agent-authored charts.** A chart-spec tool the agent can
-  invoke, pinned to a canvas, exported as PNG/CSV/PDF — the natural next
-  step once the agent can already answer the question in words.
+invoke, pinned to a canvas, exported as PNG/CSV/PDF — the natural next
+step once the agent can already answer the question in words.
 - **Multi-month snapshots.** The schema is already built for this
-  (`report_snapshot` grain, idempotent load by file hash) but nothing
-  has exercised it with a second month of files yet. Would want to see
-  whether trend questions ("how has occupancy moved since January")
-  surface new grounding or citation problems the single-snapshot agent
-  never had to solve.
-- **Named-tool `query_audit` rows.** Only the SQL escape hatch writes to
-  `query_audit` today; the schema already has generic `tool_name`/
-  `question` columns that could carry every named-tool call too, for a
-  complete server-side audit trail instead of relying on the response's
-  own `tool_calls` trace.
-- **Align `scripts/discover.py`'s lease-count diagnostic** with the real
-  parser's 153c fallback (`unit_type or resident`) — caught during the
-  final audit; the diagnostic currently under-counts by exactly 7 for a
-  reason that has nothing to do with the data.
+(`report_snapshot` grain, idempotent load by file hash) but nothing
+has exercised it with a second month of files yet. Would want to see
+whether trend questions ("how has occupancy moved since January")
+surface new grounding or citation problems the single-snapshot agent
+never had to solve.
+- **Named-tool** `query_audit` **rows.** Only the SQL escape hatch writes to
+`query_audit` today; the schema already has generic `tool_name`/
+`question` columns that could carry every named-tool call too, for a
+complete server-side audit trail instead of relying on the response's
+own `tool_calls` trace.
+- **Align** `scripts/discover.py`**'s lease-count diagnostic** with the real
+parser's 153c fallback (`unit_type or resident`) — caught during the
+final audit; the diagnostic currently under-counts by exactly 7 for a
+reason that has nothing to do with the data.
+
